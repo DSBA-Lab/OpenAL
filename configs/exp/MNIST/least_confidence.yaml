@@ -1,0 +1,31 @@
+SEED: 223
+
+DATASET:
+  datadir: ./data
+  dataname: MNIST
+  img_size: 28
+  num_classes: 10
+  batch_size: 128
+  test_batch_size: 256
+  num_workers: 12
+
+OPTIMIZER:
+  opt_name: SGD
+  lr: 0.1
+
+TRAIN:
+  epochs: 3
+  grad_accum_steps: 1
+  mixed_precision: 'fp16'
+  log_interval: 5
+  use_wandb: false
+
+MODEL:
+  modelname: resnet18
+
+AL: # active learning
+  strategy: LeastConfidence # RandomSampling, LeastConfidence, MarginSampling, EntropySampling
+  n_query: 500 # qeury samples for labeling
+
+RESULT:
+  savedir: ./results/exp
