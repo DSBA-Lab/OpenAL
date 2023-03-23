@@ -20,13 +20,13 @@ def select_file(filepath, datadir):
     labeled_list = query_df.loc[query_df['labeled_yn']==True, 'img_path'].tolist()
     unlabeled_list = query_df.loc[query_df['labeled_yn']==False, 'img_path'].tolist()
     
-    return gr.Dropdown.update(choices=labeled_list), os.path.join(datadir, unlabeled_list[0]), nb_left_imgs()
+    return gr.Dropdown.update(choices=labeled_list), os.path.join(datadir, unlabeled_list[0]), nb_left_imgs(), unlabeled_list[0]
 
 
 def show_image(datadir, img_path):
     img_path, label, _ = query_df[query_df['img_path']==img_path].values[0]
     
-    return f'image path: {img_path}\nlabel: {label}', Image.open(os.path.join(datadir, img_path))
+    return img_path, label, Image.open(os.path.join(datadir, img_path))
 
 def save_result(filepath, datadir, label):
     img_path = unlabeled_list[0]
@@ -38,16 +38,16 @@ def save_result(filepath, datadir, label):
     unlabeled_list.remove(img_path)
     
     # append an annotated image path into labeled_list
-    labeled_list.append(img_path)
+    labeled_list.insert(0, img_path)
     
-    return nb_left_imgs(), os.path.join(datadir, unlabeled_list[0]), gr.Dropdown.update(choices=labeled_list)
+    return nb_left_imgs(), os.path.join(datadir, unlabeled_list[0]), gr.Dropdown.update(choices=labeled_list), unlabeled_list[0]
 
 
-def save_relabel_result(filepath, datadir, label, img_path):
+def save_relabel_result(filepath, label, img_path):
     # save
     save_file(filepath=filepath, img_path=img_path, label=label)
 
-    return nb_left_imgs(), Image.open(os.path.join(datadir, unlabeled_list[0]))
+    return nb_left_imgs(), label
 
 
 def save_file(img_path, filepath, label):
@@ -69,23 +69,41 @@ with gr.Blocks() as demo:
             data_path = gr.Textbox(label='Data directory', value='./data/MNIST')
             select_btn = gr.Button('Select')
           
-            left_imgs = gr.Textbox(label='Left Images')
-            image_output = gr.Image(type='pil').style(height=200, width=200)
-    
-            # annotation
-            classes = gr.Radio([str(i) for i in range(10)], label='Choice a label of the image')
-            label_btn = gr.Button("Choice")
+            left_imgs = gr.Textbox(label='The number of unlabeled images / total images')
             
-            # show image
-            labeled_info_dropdown = gr.Dropdown(label='Image list to re-labeling')
-            labeled_info = gr.Textbox(label='labeled infomation of image')
-            with gr.Row():
+            with gr.Tab("Unlabeled"):
+                # show image
+                unlabeled_info = gr.Textbox(label='Current image path')
+                unlabeled_image_output = gr.Image(type='pil').style(height=200, width=200)
+        
+                # annotation
+                unlabeled_classes = gr.Radio([str(i) for i in range(10)], label='Choice a label of the image')
+                label_btn = gr.Button("Choice")
+            
+            with gr.Tab("Labeled"):
+                # show image
+                labeled_info_dropdown = gr.Dropdown(label='Image list to re-labeling (sort by recent)')
                 show_btn = gr.Button('Show')
+                
+                with gr.Row():
+                    labeled_path = gr.Textbox(label='Selected image path')
+                    labeled_info = gr.Textbox(label='Annotated label')
+                
+                # show image
+                labeled_image_output = gr.Image(type='pil').style(height=200, width=200)
+        
+                # annotation
+                labeled_classes = gr.Radio([str(i) for i in range(10)], label='Choice a label of the image')
+                
+                # re-labeling    
                 relabel_btn = gr.Button('Save re-label')
                 
-    select_btn.click(fn=select_file, inputs=[round_path, data_path], outputs=[labeled_info_dropdown, image_output, left_imgs])
-    label_btn.click(fn=save_result, inputs=[round_path, data_path, classes], outputs=[left_imgs, image_output, labeled_info_dropdown])
-    show_btn.click(fn=show_image, inputs=[data_path, labeled_info_dropdown], outputs=[labeled_info, image_output])
-    relabel_btn.click(fn=save_relabel_result, inputs=[round_path, data_path, classes, labeled_info_dropdown], outputs=[left_imgs, image_output])
+    # labeling
+    select_btn.click(fn=select_file, inputs=[round_path, data_path], outputs=[labeled_info_dropdown, unlabeled_image_output, left_imgs, unlabeled_info])
+    label_btn.click(fn=save_result, inputs=[round_path, data_path, unlabeled_classes], outputs=[left_imgs, unlabeled_image_output, labeled_info_dropdown, unlabeled_info])
+
+    # re-labeling
+    show_btn.click(fn=show_image, inputs=[data_path, labeled_info_dropdown], outputs=[labeled_path, labeled_info, labeled_image_output])
+    relabel_btn.click(fn=save_relabel_result, inputs=[round_path, labeled_classes, labeled_path], outputs=[left_imgs, labeled_info])
     
 demo.launch(share=True)
