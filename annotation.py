@@ -20,7 +20,13 @@ def select_file(filepath, datadir):
     labeled_list = query_df.loc[query_df['labeled_yn']==True, 'img_path'].tolist()
     unlabeled_list = query_df.loc[query_df['labeled_yn']==False, 'img_path'].tolist()
     
-    return gr.Dropdown.update(choices=labeled_list), os.path.join(datadir, unlabeled_list[0]), nb_left_imgs(), unlabeled_list[0]
+    # returns
+    update_dropdown = gr.Dropdown.update(choices=labeled_list)
+    output_img = os.path.join(datadir, unlabeled_list[0]) if len(unlabeled_list) > 0 else None
+    left_txt = nb_left_imgs()
+    current_img_path = unlabeled_list[0] if len(unlabeled_list) > 0 else ""
+    
+    return update_dropdown, output_img, left_txt, current_img_path
 
 
 def show_image(datadir, img_path):
@@ -29,25 +35,33 @@ def show_image(datadir, img_path):
     return img_path, label, Image.open(os.path.join(datadir, img_path))
 
 def save_result(filepath, datadir, label):
-    img_path = unlabeled_list[0]
     
-    # save
-    save_file(filepath=filepath, img_path=img_path, label=label)
+    if len(unlabeled_list) > 0:
+        img_path = unlabeled_list[0]
     
-    # remove an annotated image path from unlabeled_list 
-    unlabeled_list.remove(img_path)
+        # save
+        save_file(filepath=filepath, img_path=img_path, label=label)
+        
+        # remove an annotated image path from unlabeled_list 
+        unlabeled_list.remove(img_path)
+        
+        # append an annotated image path into labeled_list
+        labeled_list.insert(0, img_path)
     
-    # append an annotated image path into labeled_list
-    labeled_list.insert(0, img_path)
+    # returns
+    left_txt = nb_left_imgs()
+    output_img = os.path.join(datadir, unlabeled_list[0]) if len(unlabeled_list) > 0 else None
+    update_dropdown = gr.Dropdown.update(choices=labeled_list)
+    current_img_path = unlabeled_list[0] if len(unlabeled_list) > 0 else ""
     
-    return nb_left_imgs(), os.path.join(datadir, unlabeled_list[0]), gr.Dropdown.update(choices=labeled_list), unlabeled_list[0]
+    return left_txt, output_img, update_dropdown, current_img_path
 
 
 def save_relabel_result(filepath, label, img_path):
     # save
     save_file(filepath=filepath, img_path=img_path, label=label)
 
-    return nb_left_imgs(), label
+    return label
 
 
 def save_file(img_path, filepath, label):
@@ -104,6 +118,6 @@ with gr.Blocks() as demo:
 
     # re-labeling
     show_btn.click(fn=show_image, inputs=[data_path, labeled_info_dropdown], outputs=[labeled_path, labeled_info, labeled_image_output])
-    relabel_btn.click(fn=save_relabel_result, inputs=[round_path, labeled_classes, labeled_path], outputs=[left_imgs, labeled_info])
+    relabel_btn.click(fn=save_relabel_result, inputs=[round_path, labeled_classes, labeled_path], outputs=labeled_info)
     
 demo.launch(share=True)
