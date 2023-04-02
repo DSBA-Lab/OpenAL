@@ -40,21 +40,6 @@ def train(model, dataloader, criterion, optimizer, accelerator, log_interval: in
         with accelerator.accumulate(model):
             data_time_m.update(time.time() - end)
             
-            '''
-            # modifying the training loop
-
-            Finally, three lines of code need to be changed in the training loop. 
-            🤗 Accelerate’s DataLoader classes will automatically handle the device placement by default, 
-            and backward() should be used for performing the backward pass:
-
-            -   inputs = inputs.to(device)
-            -   targets = targets.to(device)
-                outputs = model(inputs)
-                loss = loss_function(outputs, targets)
-            -   loss.backward()
-            +   accelerator.backward(loss)
-
-            '''
             # predict
             outputs = model(inputs)
             loss = criterion(outputs, targets)    

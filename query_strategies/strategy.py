@@ -14,6 +14,10 @@ class Strategy:
         self.batch_size = batch_size
         self.num_workers = num_workers
         
+        self.criterion = torch.nn.CrossEntropyLoss()
+        
+    def loss_fn(self, outputs, targets):
+        return self.criterion(outputs, targets)
         
     def query(self):
         raise NotImplementedError
