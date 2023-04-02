@@ -6,10 +6,11 @@ from .strategy import Strategy
 
 class EntropySampling(Strategy):
     def __init__(
-        self, n_query: int, labeled_idx: np.ndarray, 
+        self, model, n_query: int, labeled_idx: np.ndarray, 
         dataset: Dataset, batch_size: int, num_workers: int):
         
         super(EntropySampling, self).__init__(
+            model       = model,
             n_query     = n_query, 
             labeled_idx = labeled_idx, 
             dataset     = dataset,

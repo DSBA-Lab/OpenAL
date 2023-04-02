@@ -8,6 +8,7 @@ import argparse
 import yaml
 import logging
 from glob import glob
+from copy import deepcopy
 
 from torch.utils.data import DataLoader
 from train import fit, test
@@ -122,6 +123,7 @@ def run(cfg):
     # select strategy
     strategy = create_query_strategy(
         strategy_name = cfg['AL']['strategy'], 
+        model         = __import__('models').__dict__[cfg['MODEL']['modelname']](num_classes=cfg['DATASET']['num_classes']),
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = cfg['AL']['n_query'], 
@@ -153,9 +155,6 @@ def run(cfg):
         num_workers = cfg['DATASET']['num_workers']
     )
     
-    # load init model
-    model = __import__('models').__dict__[cfg['MODEL']['modelname']](num_classes=cfg['DATASET']['num_classes']) 
-    _logger.info('# of params: {}'.format(np.sum([p.numel() for p in model.parameters()])))
     
     # optimizer
     optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg['OPTIMIZER']['opt_name']](model.parameters(), lr=cfg['OPTIMIZER']['lr'])
@@ -178,7 +177,7 @@ def run(cfg):
 
     # fitting model
     _ = fit(
-        model        = model, 
+        model        = deepcopy(strategy.model), 
         trainloader  = trainloader, 
         testloader   = validloader, 
         criterion    = strategy.loss_fn,
