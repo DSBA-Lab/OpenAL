@@ -1,15 +1,15 @@
-EXP_NAME: MarginSampling
+EXP_NAME: LeastConfidence-Subset
 SEED: 223
 
 DATASET:
   datadir: /datasets
-  dataname: CIFAR10
+  dataname: CIFAR100
   img_size: 32
-  num_classes: 10
+  num_classes: 100
   batch_size: 128
   test_batch_size: 256
   num_workers: 12
-  
+
 OPTIMIZER:
   opt_name: SGD
   lr: 0.1
@@ -23,13 +23,13 @@ TRAIN:
 
 MODEL:
   modelname: resnet18
-  
+
 AL: # active learning
-  strategy: MarginSampling # RandomSampling, LeastConfidence, MarginSampling, EntropySampling
+  strategy: LeastConfidence # RandomSampling, LeastConfidence, MarginSampling, EntropySampling
   n_start: 5000 # start samples for intial training
   n_query: 500 # qeury samples for labeling
   n_end: 30000  # end samples for final training
-  n_subset: null # the number of subset
+  n_subset: 10000 # the number of subset
 
 RESULT:
   savedir: ./results/benchmark

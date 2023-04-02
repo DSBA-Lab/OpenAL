@@ -16,7 +16,7 @@ class RandomSampling(Strategy):
             num_workers = num_workers
         )
         
-    def query(self, model) -> np.ndarray:
+    def query(self, model, n_subset: int = None) -> np.ndarray:
         
         # unlabeled index
         unlabeled_idx = np.where(self.labeled_idx==False)[0]

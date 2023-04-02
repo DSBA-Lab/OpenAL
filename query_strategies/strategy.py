@@ -2,7 +2,18 @@
 import numpy as np
 import torch
 from copy import deepcopy
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler, SubsetRandomSampler
+
+class SubsetSequentialSampler(Sampler):
+    def __init__(self, indices: np.ndarray):
+        self.indices = indices
+
+    def __iter__(self):
+        return (self.indices[i] for i in range(len(self.indices)))
+
+    def __len__(self):
+        return len(self.indices)
+    
 
 class Strategy:
     def __init__(
@@ -27,34 +38,34 @@ class Strategy:
         self.labeled_idx[query_idx] = True
         
         dataloader = DataLoader(
-            dataset     = self.dataset_sampling(sample_idx=self.labeled_idx),
+            dataset     = self.dataset,
             batch_size  = self.batch_size,
-            shuffle     = True,
+            sampler     = SubsetRandomSampler(indices=np.where(self.labeled_idx==True)[0]),
             num_workers = self.num_workers
         )
         
         return dataloader
-    
-    def dataset_sampling(self, sample_idx: np.ndarray) -> Dataset:
-        # define unlabeled dataset
-        sampled_dataset = deepcopy(self.dataset)
+
+    def subset_sampling(self, indices: np.ndarray, n_subset: int):
+        # define subset
+        subset_indices = np.random.choices(indices, size=n_subset, replace=False)
+            
+        return subset_indices
+
+
+    def extract_unlabeled_prob(self, model, n_subset: int = None) -> torch.Tensor:         
         
-        if sampled_dataset.__class__.__name__ == 'ALDataset':
-            sampled_dataset.data_info = sampled_dataset.label_info[sample_idx]
-        else:
-            sampled_dataset.data = sampled_dataset.data[sample_idx]
-            sampled_dataset.targets = np.array(sampled_dataset.targets)[sample_idx]
-
-        return sampled_dataset
-
-
-    def extract_unlabeled_prob(self, model) -> torch.Tensor:         
+        # define sampler
+        unlabeled_idx = np.where(self.labeled_idx==False)[0]
+        sampler = SubsetSequentialSampler(
+            indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
+        )
         
         # unlabeled dataloader
         dataloader = DataLoader(
-            dataset     = self.dataset_sampling(sample_idx=~self.labeled_idx),
+            dataset     = self.dataset,
             batch_size  = self.batch_size,
-            shuffle     = False,
+            sampler     = sampler,
             num_workers = self.num_workers
         )
         

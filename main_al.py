@@ -9,8 +9,10 @@ import yaml
 import logging
 from glob import glob
 
+from torch.utils.data import DataLoader
 from train import fit, test
-from datasets import create_dataset, create_dataloader
+from datasets import create_dataset
+from query_strategies import create_query_strategy
 from models import *
 from log import setup_default_logging
 
@@ -118,44 +120,42 @@ def run(cfg):
     )
         
     # select strategy
-    strategy = __import__('query_strategies').__dict__[cfg['AL']['strategy']](
-        n_query     = cfg['AL']['n_query'], 
+    strategy = create_query_strategy(
+        strategy_name = cfg['AL']['strategy'], 
+        dataset       = trainset, 
+        labeled_idx   = labeled_idx, 
+        n_query       = cfg['AL']['n_query'], 
+        batch_size    = cfg['DATASET']['batch_size'], 
+        num_workers   = cfg['DATASET']['num_workers']
+    )
+    
+    # define train dataloader
+    trainloader = DataLoader(
         dataset     = trainset,
-        labeled_idx = labeled_idx,
         batch_size  = cfg['DATASET']['batch_size'],
-        num_workers = cfg['DATASET']['num_workers']
-    )
-    
-    # define train dataloader
-    trainloader = create_dataloader(
-        dataset     = trainset, 
-        batch_size  = cfg['DATASET']['batch_size'], 
         shuffle     = True, 
         num_workers = cfg['DATASET']['num_workers']
     )
     
-    # define train dataloader
-    validloader = create_dataloader(
-        dataset     = validset, 
-        batch_size  = cfg['DATASET']['test_batch_size'], 
-        shuffle     = True, 
+    # define test dataloader
+    validloader = DataLoader(
+        dataset     = validset,
+        batch_size  = cfg['DATASET']['test_batch_size'],
+        shuffle     = False,
         num_workers = cfg['DATASET']['num_workers']
     )
     
-     # define test dataloader
-    testloader = create_dataloader(
-        dataset     = testset, 
-        batch_size  = cfg['DATASET']['test_batch_size'], 
-        shuffle     = False, 
+    # define test dataloader
+    testloader = DataLoader(
+        dataset     = testset,
+        batch_size  = cfg['DATASET']['test_batch_size'],
+        shuffle     = False,
         num_workers = cfg['DATASET']['num_workers']
     )
     
     # load init model
     model = __import__('models').__dict__[cfg['MODEL']['modelname']](num_classes=cfg['DATASET']['num_classes']) 
     _logger.info('# of params: {}'.format(np.sum([p.numel() for p in model.parameters()])))
-    
-    # set loss function
-    criterion = torch.nn.CrossEntropyLoss()
     
     # optimizer
     optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg['OPTIMIZER']['opt_name']](model.parameters(), lr=cfg['OPTIMIZER']['lr'])
@@ -173,7 +173,7 @@ def run(cfg):
         wandb.init(name=exp_name+f'_round{r}', project='Active Learning - Round', config=cfg)        
 
     # logging
-    _logger.info('[Round: {}] training samples: {}'.format(round, len(trainloader.dataset)))
+    _logger.info('[Round: {}] training samples: {}'.format(round, sum(labeled_idx)))
 
 
     # fitting model
@@ -181,7 +181,7 @@ def run(cfg):
         model        = model, 
         trainloader  = trainloader, 
         testloader   = validloader, 
-        criterion    = criterion, 
+        criterion    = strategy.loss_fn,
         optimizer    = optimizer, 
         scheduler    = scheduler,
         accelerator  = accelerator,
@@ -196,7 +196,7 @@ def run(cfg):
     test_results = test(
         model        = model, 
         dataloader   = testloader, 
-        criterion    = criterion, 
+        criterion    = strategy.loss_fn, 
         log_interval = cfg['TRAIN']['log_interval']
     )
     
@@ -204,7 +204,7 @@ def run(cfg):
     trainset.data_info = trainset.label_info[trainset.label_info.labeled_yn==False]
     
     # query
-    query_idx = strategy.query(model)
+    query_idx = strategy.query(model, n_subset=cfg['AL']['n_subset'])
     
     # save query list
     query_df = trainset.label_info.iloc[query_idx]

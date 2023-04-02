@@ -29,6 +29,7 @@ AL: # active learning
   n_start: 5000 # start samples for intial training
   n_query: 500 # qeury samples for labeling
   n_end: 30000  # end samples for final training
+  n_subset: null # the number of subset
 
 RESULT:
   savedir: ./results/benchmark

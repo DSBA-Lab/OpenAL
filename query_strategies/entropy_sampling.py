@@ -17,10 +17,10 @@ class EntropySampling(Strategy):
             num_workers = num_workers
         )
         
-    def query(self, model) -> np.ndarray:
+    def query(self, model, n_subset: int = None) -> np.ndarray:
         
         # predict probability on unlabeled dataset
-        probs = self.extract_unlabeled_prob(model=model)
+        probs = self.extract_unlabeled_prob(model=model, n_subset=n_subset)
         
         # unlabeled index
         unlabeled_idx = np.where(self.labeled_idx==False)[0]

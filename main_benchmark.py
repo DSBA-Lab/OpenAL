@@ -9,8 +9,10 @@ import yaml
 import logging
 from copy import deepcopy
 
+from torch.utils.data import DataLoader, SubsetRandomSampler
 from train import fit
-from datasets import create_dataset_benchmark, create_dataloader
+from datasets import create_dataset_benchmark
+from query_strategies import create_query_strategy
 from models import *
 from log import setup_default_logging
 
@@ -55,9 +57,6 @@ def run(cfg):
         dataname = cfg['DATASET']['dataname'],
         img_size = cfg['DATASET']['img_size']
     )
-
-    # set loss function
-    criterion = torch.nn.CrossEntropyLoss()
     
     # set active learning arguments
     nb_round = (cfg['AL']['n_end'] - cfg['AL']['n_start'])/cfg['AL']['n_query']
@@ -78,28 +77,29 @@ def run(cfg):
     labeled_idx = np.zeros_like(sample_idx, dtype=bool)
     labeled_idx[sample_idx[:cfg['AL']['n_start']]] = True
     
-    # select strategy
-    strategy = __import__('query_strategies').__dict__[cfg['AL']['strategy']](
-        n_query     = cfg['AL']['n_query'], 
-        labeled_idx = labeled_idx, 
-        dataset     = trainset,
-        batch_size  = cfg['DATASET']['batch_size'],
-        num_workers = cfg['DATASET']['num_workers']
+    # select strategy    
+    strategy = create_query_strategy(
+        strategy_name = cfg['AL']['strategy'], 
+        dataset       = trainset, 
+        labeled_idx   = labeled_idx, 
+        n_query       = cfg['AL']['n_query'], 
+        batch_size    = cfg['DATASET']['batch_size'], 
+        num_workers   = cfg['DATASET']['num_workers']
     )
     
     # define train dataloader
-    trainloader = create_dataloader(
-        dataset     = strategy.dataset_sampling(sample_idx=labeled_idx), 
-        batch_size  = cfg['DATASET']['batch_size'], 
-        shuffle     = True, 
+    trainloader = DataLoader(
+        dataset     = trainset,
+        batch_size  = cfg['DATASET']['batch_size'],
+        sampler     = SubsetRandomSampler(indices=np.where(labeled_idx==True)[0]),
         num_workers = cfg['DATASET']['num_workers']
     )
     
      # define test dataloader
-    testloader = create_dataloader(
-        dataset     = testset, 
-        batch_size  = cfg['DATASET']['test_batch_size'], 
-        shuffle     = False, 
+    testloader = DataLoader(
+        dataset     = testset,
+        batch_size  = cfg['DATASET']['test_batch_size'],
+        shuffle     = False,
         num_workers = cfg['DATASET']['num_workers']
     )
     
@@ -117,11 +117,11 @@ def run(cfg):
         
         if r != 0:    
             # query sampling    
-            query_idx = strategy.query(model)
+            query_idx = strategy.query(model, n_subset=cfg['AL']['n_subset'])
             trainloader = strategy.update(query_idx)
             
         # logging
-        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, len(trainloader.dataset)))
+        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
         
         # build Model
         model = deepcopy(model_init)
@@ -146,7 +146,7 @@ def run(cfg):
             model        = model, 
             trainloader  = trainloader, 
             testloader   = testloader, 
-            criterion    = criterion, 
+            criterion    = strategy.loss_fn, 
             optimizer    = optimizer, 
             scheduler    = scheduler,
             accelerator  = accelerator,
