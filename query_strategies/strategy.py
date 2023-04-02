@@ -17,8 +17,9 @@ class SubsetSequentialSampler(Sampler):
 
 class Strategy:
     def __init__(
-        self, n_query: int, dataset: Dataset, labeled_idx: np.ndarray, batch_size: int, num_workers: int):
+        self, model, n_query: int, dataset: Dataset, labeled_idx: np.ndarray, batch_size: int, num_workers: int):
         
+        self.model = model
         self.n_query = n_query
         self.labeled_idx = labeled_idx 
         self.dataset = dataset

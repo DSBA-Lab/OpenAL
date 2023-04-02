@@ -80,6 +80,7 @@ def run(cfg):
     # select strategy    
     strategy = create_query_strategy(
         strategy_name = cfg['AL']['strategy'], 
+        model         = __import__('models').__dict__[cfg['MODEL']['modelname']](num_classes=cfg['DATASET']['num_classes']),
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = cfg['AL']['n_query'], 
@@ -103,10 +104,6 @@ def run(cfg):
         num_workers = cfg['DATASET']['num_workers']
     )
     
-    # load init model
-    model_init = __import__('models').__dict__[cfg['MODEL']['modelname']](num_classes=cfg['DATASET']['num_classes']) 
-    _logger.info('# of params: {}'.format(np.sum([p.numel() for p in model_init.parameters()])))
-    
     # define log df
     log_df = pd.DataFrame(
         columns=['round','acc']
@@ -124,7 +121,7 @@ def run(cfg):
         _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
         
         # build Model
-        model = deepcopy(model_init)
+        model = deepcopy(strategy.model)
         
         # optimizer
         optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg['OPTIMIZER']['opt_name']](model.parameters(), lr=cfg['OPTIMIZER']['lr'])
