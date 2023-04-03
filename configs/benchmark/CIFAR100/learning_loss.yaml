@@ -1,0 +1,49 @@
+EXP_NAME: LearningLossAL
+SEED: 223
+
+DATASET:
+  datadir: /datasets
+  dataname: CIFAR100
+  img_size: 32
+  num_classes: 100
+  batch_size: 128
+  test_batch_size: 256
+  num_workers: 12
+  
+OPTIMIZER:
+  opt_name: SGD
+  lr: 0.1
+
+TRAIN:
+  epochs: 100
+  grad_accum_steps: 1
+  mixed_precision: 'fp16'
+  log_interval: 10
+  use_wandb: true
+
+MODEL:
+  modelname: resnet18
+  params:
+    loss_weight: 1.0
+    margin: 1.0
+    layer_ids:
+      - layer1
+      - layer2
+      - layer3
+      - layer4
+    in_features_list:
+      - 64
+      - 128
+      - 256
+      - 512
+    out_features: 128
+
+AL: # active learning
+  strategy: LearningLossAL # RandomSampling, LeastConfidence, MarginSampling, EntropySampling
+  n_start: 5000 # start samples for intial training
+  n_query: 500 # qeury samples for labeling
+  n_end: 30000  # end samples for final training
+  n_subset: null # the number of subset
+
+RESULT:
+  savedir: ./results/benchmark
