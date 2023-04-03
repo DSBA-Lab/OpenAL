@@ -7,7 +7,6 @@ import torch
 import argparse
 import yaml
 import logging
-from copy import deepcopy
 
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from train import fit
@@ -85,7 +84,8 @@ def run(cfg):
         labeled_idx   = labeled_idx, 
         n_query       = cfg['AL']['n_query'], 
         batch_size    = cfg['DATASET']['batch_size'], 
-        num_workers   = cfg['DATASET']['num_workers']
+        num_workers   = cfg['DATASET']['num_workers'],
+        params        = cfg['MODEL'].get('params', dict())
     )
     
     # define train dataloader
@@ -121,7 +121,7 @@ def run(cfg):
         _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
         
         # build Model
-        model = deepcopy(strategy.model)
+        model = strategy.init_model()
         
         # optimizer
         optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg['OPTIMIZER']['opt_name']](model.parameters(), lr=cfg['OPTIMIZER']['lr'])

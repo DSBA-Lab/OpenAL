@@ -28,6 +28,9 @@ class Strategy:
         
         self.criterion = torch.nn.CrossEntropyLoss()
         
+    def init_model(self):
+        return deepcopy(self.model)
+        
     def loss_fn(self, outputs, targets):
         return self.criterion(outputs, targets)
         

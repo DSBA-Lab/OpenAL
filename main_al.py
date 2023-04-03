@@ -8,7 +8,6 @@ import argparse
 import yaml
 import logging
 from glob import glob
-from copy import deepcopy
 
 from torch.utils.data import DataLoader
 from train import fit, test
@@ -155,6 +154,8 @@ def run(cfg):
         num_workers = cfg['DATASET']['num_workers']
     )
     
+    # build model
+    model = strategy.init_model()
     
     # optimizer
     optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg['OPTIMIZER']['opt_name']](model.parameters(), lr=cfg['OPTIMIZER']['lr'])
@@ -177,7 +178,7 @@ def run(cfg):
 
     # fitting model
     _ = fit(
-        model        = deepcopy(strategy.model), 
+        model        = model, 
         trainloader  = trainloader, 
         testloader   = validloader, 
         criterion    = strategy.loss_fn,
