@@ -1,35 +1,29 @@
 EXP_NAME: Random
 SEED: 223
-
 DATASET:
   datadir: /datasets
   dataname: CIFAR10
   img_size: 32
   num_classes: 10
-  batch_size: 128
+  batch_size: 32
   test_batch_size: 256
   num_workers: 12
-  
 OPTIMIZER:
   opt_name: SGD
   lr: 0.1
-
 TRAIN:
-  epochs: 100
+  epochs: 50
   grad_accum_steps: 1
-  mixed_precision: 'fp16'
+  mixed_precision: fp16
   log_interval: 10
   use_wandb: true
-
 MODEL:
   modelname: resnet18
-
-AL: # active learning
-  strategy: RandomSampling # RandomSampling, LeastConfidence, MarginSampling, EntropySampling
-  n_start: 5000 # start samples for intial training
-  n_query: 500 # qeury samples for labeling
-  n_end: 30000  # end samples for final training
-  n_subset: null # the number of subset
-
+AL:
+  strategy: RandomSampling
+  n_start: 1000
+  n_query: 500
+  n_end: 10000
+  n_subset: null
 RESULT:
   savedir: ./results/benchmark
