@@ -27,4 +27,16 @@ torchvision
 - Least Confidence
 - Margin Sampling
 - Entropy Sampling
+- Learning Loss for Active Leanring
+
+
+
+# TODO
+
+- [x] Subset Module for Unlabeled Pool
+- Learning Loss
+    - [x] Learning Loss
+    - [ ] Optimize seperate model weights of backbone and Loss Prediction Module
+- [ ] Feature Mixing
+
 
