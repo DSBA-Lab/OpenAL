@@ -18,7 +18,7 @@ class LearningLoss(nn.Module):
         assert len(outputs) % 2 == 0, 'batch size should be even.'
         
         indicate = torch.where((targets[::2]-targets[1::2])>0, 1, -1)
-        loss = -indicate * (outputs[::2]-outputs[1::2]) + self.margin
+        loss = torch.clamp(-indicate * (outputs[::2]-outputs[1::2]) + self.margin, min=0)
         
         return loss
         

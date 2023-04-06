@@ -110,7 +110,7 @@ def test(model, dataloader, criterion, log_interval: int) -> dict:
             
             # total loss and acc
             total_loss += loss.item()
-            correct += accuracy(outputs, targets, return_correct=False)
+            correct += accuracy(outputs, targets, return_correct=True)
             total += targets.size(0)
             
             if (idx+1) % log_interval == 0: 
