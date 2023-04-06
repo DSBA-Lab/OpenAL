@@ -26,6 +26,23 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 
+def accuracy(outputs, targets, return_correct=False):
+    # check type
+    if type(outputs) == torch.Tensor:
+        outputs = outputs
+    elif type(outputs) == dict:
+        outputs = outputs['logits']
+        
+    # calculate accuracy
+    preds = outputs.argmax(dim=1) 
+    correct = targets.eq(preds).sum().item()
+    
+    if return_correct:
+        return correct
+    else:
+        return correct/targets.size(0)
+
+
 def train(model, dataloader, criterion, optimizer, accelerator, log_interval: int) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
@@ -50,9 +67,8 @@ def train(model, dataloader, criterion, optimizer, accelerator, log_interval: in
             optimizer.zero_grad()
             losses_m.update(loss.item())
 
-            # accuracy
-            preds = outputs.argmax(dim=1) 
-            acc_m.update(targets.eq(preds).sum().item()/targets.size(0), n=targets.size(0))
+            # accuracy            
+            acc_m.update(accuracy(outputs, targets), n=targets.size(0))
             
             batch_time_m.update(time.time() - end)
         
@@ -94,8 +110,7 @@ def test(model, dataloader, criterion, log_interval: int) -> dict:
             
             # total loss and acc
             total_loss += loss.item()
-            preds = outputs.argmax(dim=1)
-            correct += targets.eq(preds).sum().item()
+            correct += accuracy(outputs, targets, return_correct=False)
             total += targets.size(0)
             
             if (idx+1) % log_interval == 0: 
