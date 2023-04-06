@@ -87,7 +87,10 @@ class LearningLossModel(nn.Module):
         out_y = self.backbone(x)
         out_loss = self.LPM(self.layer_outputs)
         
-        return out_y, out_loss
+        return {
+            'logits'    : out_y, 
+            'loss_pred' : out_loss
+        }
     
     
     
@@ -140,8 +143,8 @@ class LearningLossAL(Strategy):
 
         
     def loss_fn(self, outputs, targets):
-        target_loss = self.criterion(outputs[0], targets)
-        loss_pred_loss = self.learningloss(outputs[1], target_loss)
+        target_loss = self.criterion(outputs['logits'], targets)
+        loss_pred_loss = self.learningloss(outputs['loss_pred'], target_loss)
     
         return target_loss.mean() + (self.loss_weight * loss_pred_loss.mean())
     
@@ -170,6 +173,6 @@ class LearningLossAL(Strategy):
         with torch.no_grad():
             for i, (inputs, _) in enumerate(dataloader):
                 outputs = model(inputs.to(device))
-                loss_pred.append(outputs[1].cpu())
+                loss_pred.append(outputs['loss_pred'].cpu())
                 
         return torch.cat(loss_pred)
