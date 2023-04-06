@@ -52,7 +52,7 @@ class Strategy:
 
     def subset_sampling(self, indices: np.ndarray, n_subset: int):
         # define subset
-        subset_indices = np.random.choices(indices, size=n_subset, replace=False)
+        subset_indices = np.random.choice(indices, size=n_subset, replace=False)
             
         return subset_indices
 
