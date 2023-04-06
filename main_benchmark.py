@@ -44,7 +44,7 @@ def run(cfg):
         mixed_precision             = cfg['TRAIN']['mixed_precision']
     )
 
-    setup_default_logging(log_path=os.path.join(savedir, 'log.txt'))
+    setup_default_logging()
     torch_seed(cfg['SEED'])
 
     # set device
@@ -151,6 +151,9 @@ def run(cfg):
             use_wandb    = cfg['TRAIN']['use_wandb'],
             log_interval = cfg['TRAIN']['log_interval'],
         )
+        
+        # save model
+        torch.save(model.state_dict(), os.path.join(savedir, 'model.pt'))
 
         # save results
         log_df = log_df.append({
@@ -159,7 +162,7 @@ def run(cfg):
         }, ignore_index=True)
         
         log_df.to_csv(
-            os.path.join(savedir, f"total_{len(trainset)}-init_{cfg['AL']['n_start']}-query_{cfg['AL']['n_query']}-round_{nb_round}.csv"),
+            os.path.join(savedir, f"total_{len(trainset)}-init_{cfg['AL']['n_start']}-query_{cfg['AL']['n_query']}-round_{nb_round}-seed{cfg['SEED']}.csv"),
             index=False
         )    
         
@@ -171,10 +174,14 @@ def run(cfg):
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Active Learning - Benchmark')
     parser.add_argument('--yaml_config', type=str, default=None, help='exp config file')    
+    parser.add_argument('--seed', type=int, default=None, help='set seed')
 
     args = parser.parse_args()
 
     # config
     cfg = yaml.load(open(args.yaml_config,'r'), Loader=yaml.FullLoader)
+    
+    if args.seed:
+        cfg['SEED'] = args.seed
 
     run(cfg)
