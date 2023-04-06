@@ -35,7 +35,8 @@ def torch_seed(random_seed):
 def run(cfg):
 
     # make save directory
-    savedir = os.path.join(cfg['RESULT']['savedir'], cfg['DATASET']['dataname'], cfg['MODEL']['modelname'], cfg['EXP_NAME'])
+    al_name = f"total_{cfg['AL']['n_end']}-init_{cfg['AL']['n_start']}-query_{cfg['AL']['n_query']}"
+    savedir = os.path.join(cfg['RESULT']['savedir'], cfg['DATASET']['dataname'], cfg['MODEL']['modelname'], cfg['EXP_NAME'], al_name)
     os.makedirs(savedir, exist_ok=True)
 
     # set accelerator
@@ -153,7 +154,7 @@ def run(cfg):
         )
         
         # save model
-        torch.save(model.state_dict(), os.path.join(savedir, 'model.pt'))
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg['SEED']}.pt"))
 
         # save results
         log_df = log_df.append({
@@ -162,7 +163,7 @@ def run(cfg):
         }, ignore_index=True)
         
         log_df.to_csv(
-            os.path.join(savedir, f"total_{len(trainset)}-init_{cfg['AL']['n_start']}-query_{cfg['AL']['n_query']}-round_{nb_round}-seed{cfg['SEED']}.csv"),
+            os.path.join(savedir, f"round_{nb_round}-seed{cfg['SEED']}.csv"),
             index=False
         )    
         
@@ -181,7 +182,7 @@ if __name__=='__main__':
     # config
     cfg = yaml.load(open(args.yaml_config,'r'), Loader=yaml.FullLoader)
     
-    if args.seed:
+    if args.seed != None:
         cfg['SEED'] = args.seed
 
     run(cfg)
