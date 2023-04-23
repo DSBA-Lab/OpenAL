@@ -137,7 +137,7 @@ def run(cfg):
         
         # initialize wandb
         if cfg['TRAIN']['use_wandb']:
-            wandb.init(name=cfg['EXP_NAME']+f'_round{r}', project='Active Learning - Benchmark', config=cfg)        
+            wandb.init(name=cfg['EXP_NAME']+f'_round{r}', project='Active Learning - Benchmark', entity='dsba-al-2023', config=cfg)        
 
         # fitting model
         test_results = fit(
