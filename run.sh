@@ -1,10 +1,14 @@
 datasets='CIFAR10 CIFAR100'
-strategy='random_sampling least_confidence margin_sampling entropy_sampling'
+strategy='learning_loss least_confidence margin_sampling entropy_sampling random_sampling'
+seed_list='0 1 2 3 4'
 
-for d in $datasets
+for seed in $seed_list
 do
-    for s in $strategy
+    for d in $datasets
     do
-        python main_benchmark.py --yaml_config ./configs/$d/$s.yaml
+        for s in $strategy
+        do
+            python main_benchmark.py --yaml_config ./configs/benchmark/$d/${s}.yaml --seed $seed
+        done
     done
 done
