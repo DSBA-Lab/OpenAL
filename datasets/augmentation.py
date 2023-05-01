@@ -10,10 +10,10 @@ def train_augmentation(img_size: int, mean: tuple, std: tuple):
 
     return transform
 
-def test_augmentation(img_size: int, mean: tuple std: tuple):
+def test_augmentation(img_size: int, mean: tuple, std: tuple):
     transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Resize(size),
+        transforms.Resize(img_size),
         transforms.Normalize(mean, std),
     ])
 
