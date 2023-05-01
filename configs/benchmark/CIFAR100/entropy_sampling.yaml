@@ -1,4 +1,4 @@
-EXP_NAME: EntropySampling
+EXP_NAME: EntropySampling-150epochs
 SEED: 223
 DATASET:
   datadir: /datasets
@@ -8,11 +8,19 @@ DATASET:
   batch_size: 32
   test_batch_size: 256
   num_workers: 12
+  mean:
+    - 0.5071
+    - 0.4867
+    - 0.4408
+  std:
+    - 0.2675
+    - 0.2565
+    - 0.2761
 OPTIMIZER:
   opt_name: SGD
   lr: 0.1
 TRAIN:
-  epochs: 50
+  epochs: 150
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
