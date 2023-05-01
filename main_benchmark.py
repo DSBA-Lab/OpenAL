@@ -55,7 +55,9 @@ def run(cfg):
     trainset, testset = create_dataset_benchmark(
         datadir  = cfg['DATASET']['datadir'], 
         dataname = cfg['DATASET']['dataname'],
-        img_size = cfg['DATASET']['img_size']
+        img_size = cfg['DATASET']['img_size'],
+        mean     = cfg['DATASET']['mean'],
+        std      = cfg['DATASET']['std']
     )
     
     # set active learning arguments

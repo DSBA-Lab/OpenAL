@@ -1,19 +1,20 @@
 from torchvision import transforms
 
-def train_augmentation(img_size):
+def train_augmentation(img_size: int, mean: tuple, std: tuple):
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.RandomCrop(img_size, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+        transforms.Normalize(mean, std),
     ])
 
     return transform
 
-def test_augmentation():
+def test_augmentation(img_size: int, mean: tuple std: tuple):
     transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Resize(size),
+        transforms.Normalize(mean, std),
     ])
 
     return transform
