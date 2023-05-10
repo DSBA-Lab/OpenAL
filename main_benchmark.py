@@ -52,12 +52,11 @@ def run(cfg):
     _logger.info('Device: {}'.format(accelerator.device))
 
     # load dataset
-    trainset, testset = create_dataset_benchmark(
-        datadir  = cfg['DATASET']['datadir'], 
-        dataname = cfg['DATASET']['dataname'],
-        img_size = cfg['DATASET']['img_size'],
-        mean     = cfg['DATASET']['mean'],
-        std      = cfg['DATASET']['std']
+    trainset, testset = __import__('datasets').__dict__[f"load_{cfg['DATASET']['dataname'].lower()}"](
+        datadir            = cfg['DATASET']['datadir'], 
+        img_size           = cfg['DATASET']['img_size'],
+        mean               = cfg['DATASET']['mean'], 
+        std                = cfg['DATASET']['std']
     )
     
     # set active learning arguments
