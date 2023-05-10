@@ -213,6 +213,9 @@ def parser(cfg):
     # Update DATASET
     cfg['DATASET'].update(stats.datasets[args['dataname']])
     
+    # Update experiment name
+    cfg['DEFAULT']['exp_name'] = cfg['AL']['strategy']
+    
     # Update arguments
     def update_value(cfg, group, key, value) -> dict:
         if key in cfg[group].keys() and value:

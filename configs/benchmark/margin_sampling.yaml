@@ -1,11 +1,10 @@
 DEFAULT:
-  exp_name: MarginSampling
   seed: 0
   savedir: ./results/benchmark
 DATASET:
   datadir: /datasets
   batch_size: 32
-  test_batch_size: 256
+  test_batch_size: 2048
   num_workers: 12
 OPTIMIZER:
   opt_name: SGD

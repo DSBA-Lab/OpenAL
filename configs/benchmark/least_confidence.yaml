@@ -1,9 +1,10 @@
-EXP_NAME: LeastConfidence
-SEED: 223
+DEFAULT:
+  seed: 0
+  savedir: ./results/benchmark
 DATASET:
   datadir: /datasets
   batch_size: 32
-  test_batch_size: 256
+  test_batch_size: 2048
   num_workers: 12
 OPTIMIZER:
   opt_name: SGD
@@ -22,5 +23,3 @@ AL:
   n_query: 500
   n_end: 10000
   n_subset: null
-RESULT:
-  savedir: ./results/benchmark
