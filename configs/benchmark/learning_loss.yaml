@@ -14,7 +14,6 @@ TRAIN:
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
-  use_wandb: true
 MODEL:
   modelname: resnet18
   params:

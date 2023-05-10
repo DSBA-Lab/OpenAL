@@ -6,6 +6,7 @@ import torch
 import argparse
 import yaml
 import logging
+import json 
 
 from train import al_run, full_run
 from datasets import stats
@@ -139,7 +140,7 @@ def parser():
     parser.add_argument('--grad_accum_steps', type=int, default=None, help='steps for gradients accumulation')
     parser.add_argument('--mixed_precision', type=str, default=None, choices=['fp16','bf16'], help='mixed precision')
     parser.add_argument('--log_interval', type=int, default=None, help='log interval')
-    parser.add_argument('--use_wandb', action='store_false', help='use wandb')
+    parser.add_argument('--no_wandb', action='store_true', help='use wandb')
     
     # Active Learning
     parser.add_argument('--n_start', type=int, default=None, help='number of samples for initial datasets')
@@ -162,6 +163,9 @@ def parser():
     # Update DATASET
     cfg['DATASET']['dataname'] = args['dataname']
     cfg['DATASET'].update(stats.datasets[args['dataname']])
+    
+    # update wandb
+    cfg['TRAIN']['use_wandb'] = args['no_wandb'] == False
     
     # Update experiment name
     cfg['DEFAULT']['exp_name'] = cfg['AL']['strategy'] if 'AL' in cfg.keys() else 'Full'
@@ -187,6 +191,9 @@ if __name__=='__main__':
 
     # config
     cfg = parser()
+    
+    cfg_print = json.dumps(cfg, indent=4)
+    print(cfg_print)
     
     # run
     run(cfg)
