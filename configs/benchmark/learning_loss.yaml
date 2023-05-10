@@ -1,26 +1,15 @@
-EXP_NAME: LearningLossAL-150epochs
+EXP_NAME: LearningLossAL-survey_setting_wo_seperate
 SEED: 223
 DATASET:
   datadir: /datasets
-  dataname: CIFAR10
-  img_size: 32
-  num_classes: 10
-  batch_size: 32
-  test_batch_size: 256
+  batch_size: 128
+  test_batch_size: 2048
   num_workers: 12
-  mean:
-    - 0.4914
-    - 0.4822
-    - 0.4465
-  std:
-    - 0.2470
-    - 0.2435
-    - 0.2616
 OPTIMIZER:
-  opt_name: SGD
-  lr: 0.1
+  opt_name: Adam
+  lr: 0.001
 TRAIN:
-  epochs: 150
+  epochs: 30
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
@@ -45,7 +34,7 @@ AL:
   strategy: LearningLossAL
   n_start: 1000
   n_query: 500
-  n_end: 10000
+  n_end: 40000
   n_subset: null
 RESULT:
   savedir: ./results/benchmark

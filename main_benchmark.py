@@ -10,7 +10,7 @@ import logging
 
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from train import fit
-from datasets import create_dataset_benchmark
+from datasets import stats
 from query_strategies import create_query_strategy
 from models import *
 from log import setup_default_logging
@@ -173,17 +173,68 @@ def run(cfg):
         wandb.finish()
     
 
-if __name__=='__main__':
+def parser(cfg):
     parser = argparse.ArgumentParser(description='Active Learning - Benchmark')
-    parser.add_argument('--yaml_config', type=str, default=None, help='exp config file')    
-    parser.add_argument('--seed', type=int, default=None, help='set seed')
+    
+    # defuault
+    parser.add_argument('--exp_name', type=str, default=None, help='experiment name')
+    parser.add_argument('--seed', type=int, default=1, help='set seed')
+    
+    # DATASET
+    parser.add_argument('--dataname', type=str, default='CIFAR10', choices=['CIFAR10','CIFAR100','SVHN','Tiny-ImageNet-200'], help='data name')
+    parser.add_argument('--datadir', type=str, default=None, help='data directory')
+    parser.add_argument('--batch_size', type=int, default=None, help='batch size for trainset')
+    parser.add_argument('--test_batch_size', type=int, default=None, help='batch size for testset')
+    parser.add_argument('--num_workers', type=int, default=None, help='number of workers for preprocessing')
+    
+    # OPTIMIZER
+    parser.add_argument('--opt_name', type=str, default=None, choices=['SGD','Adam'], help='optimizer name')
+    parser.add_argument('--lr', type=float, default=None, help='learning rate for optimizer')
+    
+    # TRAIN
+    parser.add_argument('--epochs', type=int, default=None, help='the number of epochs')
+    parser.add_argument('--grad_accum_steps', type=int, default=None, help='steps for gradients accumulation')
+    parser.add_argument('--mixed_precision', type=str, default=None, choices=['fp16','bf16'], help='mixed precision')
+    parser.add_argument('--log_interval', type=int, default=None, help='log interval')
+    parser.add_argument('--use_wandb', type=bool, default=None, help='use wandb')
+    
+    # Active Learning
+    parser.add_argument('--n_start', type=int, default=None, help='number of samples for initial datasets')
+    parser.add_argument('--n_query', type=int, default=None, help='number of query(budget or batch) for sampling')
+    parser.add_argument('--n_end', type=int, default=None, help='number of samples to end active learning')
+    parser.add_argument('--n_subset', type=int, default=None, help='number of samples for sub-sampling')
+    
+    # RESULT
+    parser.add_argument('--savedir', type=str, default=None, help='directory to save result')
 
     args = parser.parse_args()
+    args = vars(args)
+    
+    # Update DATASET
+    cfg['DATASET'].update(stats.datasets[args['dataname']])
+    
+    # Update arguments
+    def update_value(cfg, group, key, value) -> dict:
+        if key in cfg[group].keys() and value:
+            if key == 'exp_name':
+                cfg[group][key] = f"{cfg[group][key]}-{v}"    
+            else:
+                cfg[group][key] = value
+        
+        return cfg
+        
+    # update value
+    for k, v in args.items():    
+        print(k)
+        for k_cfg in cfg.keys():
+            cfg = update_value(cfg=cfg, group=k_cfg, key=k, value=v)
+
+    return cfg    
+
+if __name__=='__main__':
 
     # config
     cfg = yaml.load(open(args.yaml_config,'r'), Loader=yaml.FullLoader)
+    cfg = parser(cfg)
     
-    if args.seed != None:
-        cfg['SEED'] = args.seed
-
     run(cfg)
