@@ -38,5 +38,10 @@ torchvision
     - [x] Learning Loss
     - [ ] Optimize seperate model weights of backbone and Loss Prediction Module
 - [ ] Feature Mixing
-
+- [ ] Survey setting
+    - [x] Learning loss (w/o seperate)
+    - [ ] entropy sampling
+- [ ] PT4AL
+- [ ] k-center greedy
+- [ ] BALD
 
