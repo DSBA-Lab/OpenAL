@@ -3,8 +3,17 @@ import wandb
 import time
 import os
 import json
+import random
+
+import numpy as np
+import pandas as pd
+
 import torch
+from torch.utils.data import DataLoader, SubsetRandomSampler
 from collections import OrderedDict
+
+from query_strategies import create_query_strategy
+from models import *
 
 _logger = logging.getLogger('train')
 
@@ -164,3 +173,191 @@ def fit(
             torch.save(model.state_dict(), os.path.join(savedir, 'model.pt'))
     
     return eval_metrics
+
+
+def full_run(
+    modelname: str,
+    trainset, testset, 
+    img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
+    opt_name: str, lr: float, 
+    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator):
+    
+    # logging
+    _logger.info('Full Supervised Learning, [total samples] {}'.format(len(trainset)))
+
+    # define train dataloader
+    trainloader = DataLoader(
+        dataset     = trainset,
+        batch_size  = batch_size,
+        shuffle     = True,
+        num_workers = num_workers
+    )
+    
+    # define test dataloader
+    testloader = DataLoader(
+        dataset     = testset,
+        batch_size  = test_batch_size,
+        shuffle     = False,
+        num_workers = num_workers
+    )
+
+    # load model
+    model = __import__('models').__dict__[modelname](num_classes=num_classes, img_size=img_size)
+    
+    # optimizer
+    optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr)
+
+    # scheduler
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
+
+    # criterion 
+    criterion = torch.nn.CrossEntropyLoss()
+    
+    # prepraring accelerator
+    model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
+        model, optimizer, trainloader, testloader, scheduler
+    )
+
+    # fitting model
+    test_results = fit(
+        model        = model, 
+        trainloader  = trainloader, 
+        testloader   = testloader, 
+        criterion    = criterion, 
+        optimizer    = optimizer, 
+        scheduler    = scheduler,
+        accelerator  = accelerator,
+        epochs       = epochs, 
+        use_wandb    = use_wandb,
+        log_interval = log_interval,
+    )
+    
+    # save model
+    torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+
+    # save result
+    json.dump(test_results, open(os.path.join(savedir, f'results_seed{seed}.json'), 'w'), indent='\t')
+
+
+def al_run(
+    exp_name: str, modelname: str, modelparams: dict, 
+    strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, 
+    trainset, testset, 
+    img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
+    opt_name: str, lr: float, 
+    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator, cfg: dict = None):
+    
+    assert cfg != None if use_wandb else True, 'If you use wandb, configs should be exist.'
+    
+    # set active learning arguments
+    nb_round = (n_end - n_start)/n_query
+    
+    if nb_round % int(nb_round) != 0:
+        nb_round = int(nb_round) + 1
+    else:
+        nb_round = int(nb_round)
+    
+    # logging
+    _logger.info('[total samples] {}, [initial samples] {} [qeury samples] {} [end samples] {} [total round] {}'.format(
+        len(trainset), n_start, n_query, n_end, nb_round))
+    
+    # inital sampling labeling
+    sample_idx = np.arange(len(trainset))
+    np.random.shuffle(sample_idx)
+    
+    labeled_idx = np.zeros_like(sample_idx, dtype=bool)
+    labeled_idx[sample_idx[:n_start]] = True
+    
+    # select strategy    
+    strategy = create_query_strategy(
+        strategy_name = strategy, 
+        model         = __import__('models').__dict__[modelname](num_classes=num_classes, img_size=img_size),
+        dataset       = trainset, 
+        labeled_idx   = labeled_idx, 
+        n_query       = n_query, 
+        batch_size    = batch_size, 
+        num_workers   = num_workers,
+        params        = cfg['MODEL'].get('params', dict())
+    )
+    
+    # define train dataloader
+    trainloader = DataLoader(
+        dataset     = trainset,
+        batch_size  = batch_size,
+        sampler     = SubsetRandomSampler(indices=np.where(labeled_idx==True)[0]),
+        num_workers = num_workers
+    )
+    
+     # define test dataloader
+    testloader = DataLoader(
+        dataset     = testset,
+        batch_size  = test_batch_size,
+        shuffle     = False,
+        num_workers = num_workers
+    )
+    
+    # define log df
+    log_df = pd.DataFrame(
+        columns=['round','acc']
+    )
+    
+    # run
+    for r in range(nb_round+1):
+        
+        if r != 0:    
+            # query sampling    
+            query_idx = strategy.query(model, n_subset=n_subset)
+            trainloader = strategy.update(query_idx)
+            
+        # logging
+        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
+        
+        # build Model
+        model = strategy.init_model()
+        
+        # optimizer
+        optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr)
+
+        # scheduler
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
+        
+        # prepraring accelerator
+        model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
+            model, optimizer, trainloader, testloader, scheduler
+        )
+        
+        # initialize wandb
+        if use_wandb:
+            wandb.init(name=f'{exp_name}_round{r}', project='Active Learning - Benchmark', entity='dsba-al-2023', config=cfg)        
+
+        # fitting model
+        test_results = fit(
+            model        = model, 
+            trainloader  = trainloader, 
+            testloader   = testloader, 
+            criterion    = strategy.loss_fn, 
+            optimizer    = optimizer, 
+            scheduler    = scheduler,
+            accelerator  = accelerator,
+            epochs       = epochs, 
+            use_wandb    = use_wandb,
+            log_interval = log_interval,
+        )
+        
+        # save model
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+
+        # save results
+        log_df = log_df.append({
+            'round' : r,
+            'acc'   : test_results['acc']
+        }, ignore_index=True)
+        
+        log_df.to_csv(
+            os.path.join(savedir, f"round_{nb_round}-seed{seed}.csv"),
+            index=False
+        )    
+        
+        _logger.info('append result [shape: {}]'.format(log_df.shape))
+        
+        wandb.finish()

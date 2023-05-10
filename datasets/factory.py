@@ -1,4 +1,6 @@
 import os
+
+from torchvision import datasets
 from .build import ALDataset
 from .augmentation import train_augmentation, test_augmentation
 

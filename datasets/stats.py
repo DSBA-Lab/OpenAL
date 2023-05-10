@@ -23,7 +23,7 @@ datasets = {
         "mean"        : (0.4377, 0.4438, 0.4728), 
         "std"         : (0.1980, 0.2010, 0.1970)
     },
-    "Tiny-ImageNet-200":{
+    "Tiny_ImageNet_200":{
         "num_classes" : 200,
         "img_size"    : 64,
         "mean"        : (0.4802, 0.4481, 0.3975), 
