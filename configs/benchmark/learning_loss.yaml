@@ -34,5 +34,5 @@ AL:
   strategy: LearningLossAL
   n_start: 1000
   n_query: 500
-  n_end: 40000
+  n_end: 10000
   n_subset: null
