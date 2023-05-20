@@ -124,6 +124,10 @@ def parser():
     parser.add_argument('--exp_name', type=str, default=None, help='experiment name')
     parser.add_argument('--seed', type=int, default=None, help='set seed')
     
+    # MODEL
+    parser.add_argument('--modelname', type=str, default=None, help='model name')
+    parser.add_argument('--pretrained', action='store_true', help='use pretrained weights')
+    
     # DATASET
     parser.add_argument('--dataname', type=str, default=None, choices=['CIFAR10','CIFAR100','SVHN','Tiny_ImageNet_200'], help='data name')
     parser.add_argument('--datadir', type=str, default=None, help='data directory')
@@ -196,4 +200,4 @@ if __name__=='__main__':
     print(cfg_print)
     
     # run
-    run(cfg)
+    # run(cfg)

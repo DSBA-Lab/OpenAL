@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from train import fit, test
 from datasets import create_dataset
 from query_strategies import create_query_strategy
-from models import *
+from models import create_model
 from log import setup_default_logging
 
 from accelerate import Accelerator
@@ -124,7 +124,7 @@ def run(cfg):
     # select strategy
     strategy = create_query_strategy(
         strategy_name = cfg['AL']['strategy'], 
-        model         = __import__('models').__dict__[cfg['MODEL']['modelname']](num_classes=cfg['DATASET']['num_classes']),
+        model         = create_model(modelname=cfg['MODEL']['modelname'], num_classes=cfg['DATASET']['num_classesl'], img_size=cfg['DATASET']['img_size'], pretrained=cfg['MODEL']['pretrained']),
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = cfg['AL']['n_query'], 

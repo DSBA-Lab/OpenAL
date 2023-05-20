@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from collections import OrderedDict
 
 from query_strategies import create_query_strategy
-from models import *
+from models import create_model
 
 _logger = logging.getLogger('train')
 
@@ -202,7 +202,12 @@ def full_run(
     )
 
     # load model
-    model = __import__('models').__dict__[modelname](num_classes=num_classes, img_size=img_size)
+    model = create_model(
+        modelname   = cfg['MODEL']['modelname'], 
+        num_classes = cfg['DATASET']['num_classesl'], 
+        img_size    = cfg['DATASET']['img_size'], 
+        pretrained  = cfg['MODEL']['pretrained']
+    )
     
     # optimizer
     optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr)
@@ -271,7 +276,7 @@ def al_run(
     # select strategy    
     strategy = create_query_strategy(
         strategy_name = strategy, 
-        model         = __import__('models').__dict__[modelname](num_classes=num_classes, img_size=img_size),
+        model         = create_model(modelname=cfg['MODEL']['modelname'], num_classes=cfg['DATASET']['num_classesl'], img_size=cfg['DATASET']['img_size'], pretrained=cfg['MODEL']['pretrained']),
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = n_query, 
