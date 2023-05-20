@@ -61,7 +61,7 @@ def run(cfg):
         al_run(
             exp_name        = cfg['DEFAULT']['exp_name'], 
             modelname       = cfg['MODEL']['modelname'],
-            modelparams     = cfg['MODEL'].get('params', dict()),
+            pretrained      = cfg['MODEL']['pretrained'],
             strategy        = cfg['AL']['strategy'],
             n_start         = cfg['AL']['n_start'],
             n_end           = cfg['AL']['n_end'],
@@ -96,6 +96,7 @@ def run(cfg):
         # run full supervised learning
         full_run(
             modelname       = cfg['MODEL']['modelname'],
+            pretrained      = cfg['MODEL']['pretrained'],
             trainset        = trainset,
             testset         = testset,
             img_size        = cfg['DATASET']['img_size'],
@@ -200,4 +201,4 @@ if __name__=='__main__':
     print(cfg_print)
     
     # run
-    # run(cfg)
+    run(cfg)
