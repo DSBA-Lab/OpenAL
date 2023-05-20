@@ -16,6 +16,7 @@ TRAIN:
   log_interval: 10
 MODEL:
   modelname: resnet18
+  pretrained: false
 AL:
   strategy: MarginSampling
   n_start: 1000
