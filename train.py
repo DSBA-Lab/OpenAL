@@ -176,7 +176,7 @@ def fit(
 
 
 def full_run(
-    modelname: str,
+    modelname: str, pretrained: bool,
     trainset, testset, 
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
     opt_name: str, lr: float, 
@@ -203,10 +203,10 @@ def full_run(
 
     # load model
     model = create_model(
-        modelname   = cfg['MODEL']['modelname'], 
-        num_classes = cfg['DATASET']['num_classesl'], 
-        img_size    = cfg['DATASET']['img_size'], 
-        pretrained  = cfg['MODEL']['pretrained']
+        modelname   = modelname, 
+        num_classes = num_classes, 
+        img_size    = img_size, 
+        pretrained  = pretrained
     )
     
     # optimizer
@@ -245,7 +245,7 @@ def full_run(
 
 
 def al_run(
-    exp_name: str, modelname: str, modelparams: dict, 
+    exp_name: str, modelname: str, pretrained: bool,
     strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, 
     trainset, testset, 
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
@@ -276,7 +276,7 @@ def al_run(
     # select strategy    
     strategy = create_query_strategy(
         strategy_name = strategy, 
-        model         = create_model(modelname=cfg['MODEL']['modelname'], num_classes=cfg['DATASET']['num_classesl'], img_size=cfg['DATASET']['img_size'], pretrained=cfg['MODEL']['pretrained']),
+        model         = create_model(modelname=modelname, num_classes=num_classes, img_size=img_size, pretrained=pretrained),
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = n_query, 
