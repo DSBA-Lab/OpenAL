@@ -17,3 +17,8 @@ TRAIN:
 MODEL:
   modelname: resnet18
   pretrained: false
+AL:
+  n_start: 1000
+  n_query: 500
+  n_end: 10000
+  n_subset: null
