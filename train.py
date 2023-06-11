@@ -36,12 +36,6 @@ class AverageMeter:
 
 
 def accuracy(outputs, targets, return_correct=False):
-    # check type
-    if type(outputs) == torch.Tensor:
-        outputs = outputs
-    elif type(outputs) == dict:
-        outputs = outputs['logits']
-        
     # calculate accuracy
     preds = outputs.argmax(dim=1) 
     correct = targets.eq(preds).sum().item()
