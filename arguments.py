@@ -16,11 +16,14 @@ def parser():
     args = parser.parse_args()
 
     # load default config
-    cfg_default = OmegaConf.load(args.default_setting)
+    cfg = OmegaConf.load(args.default_setting)
     
-    # merge strategy config
-    cfg_strategy = OmegaConf.load(args.strategy_setting)
-    cfg = OmegaConf.merge(cfg_default, cfg_strategy)
+    # load strategy config
+    if args.strategy_setting:
+        cfg_strategy = OmegaConf.load(args.strategy_setting)
+        cfg = OmegaConf.merge(cfg, cfg_strategy)
+    else:
+        del cfg['AL']
     
     # Update experiment name
     cfg.DEFAULT.exp_name = cfg.AL.strategy if 'AL' in cfg.keys() else 'Full'
