@@ -35,7 +35,7 @@ def run(cfg):
     )
 
     setup_default_logging()
-    torch_seed(cfg.DEFAUL.seed)
+    torch_seed(cfg.DEFAULT.seed)
 
     # set device
     _logger.info('Device: {}'.format(accelerator.device))
