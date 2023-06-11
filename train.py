@@ -282,7 +282,7 @@ def al_run(
         n_query       = n_query, 
         batch_size    = batch_size, 
         num_workers   = num_workers,
-        params        = cfg['MODEL'].get('params', dict())
+        params        = cfg.MODEL.get('params', dict())
     )
     
     # define train dataloader

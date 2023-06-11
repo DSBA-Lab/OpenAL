@@ -77,10 +77,11 @@ def run(cfg):
 
     # define exp name
     exp_name = os.path.join(
-        cfg['RESULT']['savedir'], 
-        cfg['DATASET']['dataname'], 
-        cfg['MODEL']['modelname'],
-        f"{cfg['AL']['strategy']}-n_query{cfg['AL']['n_query']}"
+        cfg.DEFAULT.savedir, 
+        cfg.DATASET.dataname, 
+        cfg.MODEL.modelname,
+        cfg.AL.strategy,
+        f"n_query{cfg.AL.n_query}"
     )
     
     # check round
@@ -95,23 +96,23 @@ def run(cfg):
 
     # set accelerator
     accelerator = Accelerator(
-        gradient_accumulation_steps = cfg['TRAIN']['grad_accum_steps'],
-        mixed_precision             = cfg['TRAIN']['mixed_precision']
+        gradient_accumulation_steps = cfg.TRAIN.grad_accum_steps,
+        mixed_precision             = cfg.TRAIN.mixed_precision
     )
 
     setup_default_logging(log_path=os.path.join(savedir, 'log.txt'))
-    torch_seed(cfg['SEED'])
+    torch_seed(cfg.DEFAULT.seed)
 
     # set device
     _logger.info('Device: {}'.format(accelerator.device))
 
     # load dataset
     trainset, validset, testset = create_dataset(
-        datadir  = cfg['DATASET']['datadir'], 
-        dataname = cfg['DATASET']['dataname'],
-        img_size = cfg['DATASET']['img_size'],
-        mean     = cfg['DATASET']['mean'],
-        std      = cfg['DATASET']['std']
+        datadir  = cfg.DATASET.datadir, 
+        dataname = cfg.DATASET.dataname,
+        img_size = cfg.DATASET.img_size,
+        mean     = cfg.DATASET.mean,
+        std      = cfg.DATASET.std
     )
     
     # add query labels annotated from previous rounds
@@ -123,47 +124,47 @@ def run(cfg):
         
     # select strategy
     strategy = create_query_strategy(
-        strategy_name = cfg['AL']['strategy'], 
-        model         = create_model(modelname=cfg['MODEL']['modelname'], num_classes=cfg['DATASET']['num_classesl'], img_size=cfg['DATASET']['img_size'], pretrained=cfg['MODEL']['pretrained']),
+        strategy_name = cfg.AL.strategy, 
+        model         = create_model(modelname=cfg.MODEL.modelname, num_classes=cfg.DATASET.num_classes, img_size=cfg.DATASET.img_size, pretrained=cfg.MODEL.pretrained),
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
-        n_query       = cfg['AL']['n_query'], 
-        batch_size    = cfg['DATASET']['batch_size'], 
-        num_workers   = cfg['DATASET']['num_workers']
+        n_query       = cfg.AL.n_query, 
+        batch_size    = cfg.DATASET.batch_size, 
+        num_workers   = cfg.DATASET.num_workers
     )
     
     # define train dataloader
     trainloader = DataLoader(
         dataset     = trainset,
-        batch_size  = cfg['DATASET']['batch_size'],
+        batch_size  = cfg.DATASET.batch_size,
         shuffle     = True, 
-        num_workers = cfg['DATASET']['num_workers']
+        num_workers = cfg.DATASET.num_workers
     )
     
     # define test dataloader
     validloader = DataLoader(
         dataset     = validset,
-        batch_size  = cfg['DATASET']['test_batch_size'],
+        batch_size  = cfg.DATASET.test_batch_size,
         shuffle     = False,
-        num_workers = cfg['DATASET']['num_workers']
+        num_workers = cfg.DATASET.num_workers
     )
     
     # define test dataloader
     testloader = DataLoader(
         dataset     = testset,
-        batch_size  = cfg['DATASET']['test_batch_size'],
+        batch_size  = cfg.DATASET.test_batch_size,
         shuffle     = False,
-        num_workers = cfg['DATASET']['num_workers']
+        num_workers = cfg.DATASET.num_workers
     )
     
     # build model
     model = strategy.init_model()
     
     # optimizer
-    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg['OPTIMIZER']['opt_name']](model.parameters(), lr=cfg['OPTIMIZER']['lr'])
+    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.opt_name](model.parameters(), lr=cfg.OPTIMIZER.lr)
 
     # scheduler
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=cfg['TRAIN']['epochs'], T_mult=1, eta_min=0.00001)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=cfg.TRAIN.epochs, T_mult=1, eta_min=0.00001)
     
     # prepraring accelerator
     model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
@@ -171,8 +172,8 @@ def run(cfg):
     )
     
     # initialize wandb
-    if cfg['TRAIN']['use_wandb']:
-        wandb.init(name=exp_name+f'_round{r}', project='Active Learning - Round', config=cfg)        
+    if cfg.TRAIN.use_wandb:
+        wandb.init(name=exp_name+f'_round{round}', project='Active Learning - Round', config=cfg)        
 
     # logging
     _logger.info('[Round: {}] training samples: {}'.format(round, sum(labeled_idx)))
@@ -187,9 +188,9 @@ def run(cfg):
         optimizer    = optimizer, 
         scheduler    = scheduler,
         accelerator  = accelerator,
-        epochs       = cfg['TRAIN']['epochs'], 
-        use_wandb    = cfg['TRAIN']['use_wandb'],
-        log_interval = cfg['TRAIN']['log_interval'],
+        epochs       = cfg.TRAIN.epochs, 
+        use_wandb    = cfg.TRAIN.use_wandb,
+        log_interval = cfg.TRAIN.log_interval,
         savedir      = savedir
     )
     
@@ -199,14 +200,14 @@ def run(cfg):
         model        = model, 
         dataloader   = testloader, 
         criterion    = strategy.loss_fn, 
-        log_interval = cfg['TRAIN']['log_interval']
+        log_interval = cfg.TRAIN.log_interval
     )
     
     # change data information into unlabeled data
     trainset.data_info = trainset.label_info[trainset.label_info.labeled_yn==False]
     
     # query
-    query_idx = strategy.query(model, n_subset=cfg['AL']['n_subset'])
+    query_idx = strategy.query(model, n_subset=cfg.AL.n_subset)
     
     # save query list
     query_df = trainset.label_info.iloc[query_idx]
