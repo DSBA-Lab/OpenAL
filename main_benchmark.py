@@ -42,16 +42,16 @@ def run(cfg):
 
     # load dataset
     trainset, testset = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
-        datadir            = cfg.DATASET.datadir, 
-        img_size           = cfg.DATASET.img_size,
-        mean               = cfg.DATASET.mean, 
-        std                = cfg.DATASET.std
+        datadir  = cfg.DATASET.datadir, 
+        img_size = cfg.DATASET.img_size,
+        mean     = cfg.DATASET.mean, 
+        std      = cfg.DATASET.std
     )
     
     if 'AL' in cfg.keys():
         # make save directory
         al_name = f"total_{cfg.AL.n_end}-init_{cfg.AL.n_start}-query_{cfg.AL.n_query}"
-        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, cfg.DEFAULT.exp_name, al_name)
+        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, cfg.DEFAULT.exp_name, al_name, f'seed{cfg.DEFAULT.seed}')
         os.makedirs(savedir, exist_ok=True)
         
         # run active learning
@@ -65,6 +65,7 @@ def run(cfg):
             n_query         = cfg.AL.n_query,
             n_subset        = cfg.AL.n_subset,
             trainset        = trainset,
+            validset        = testset,
             testset         = testset,
             img_size        = cfg.DATASET.img_size,
             num_classes     = cfg.DATASET.num_classes,
@@ -75,7 +76,7 @@ def run(cfg):
             lr              = cfg.OPTIMIZER.lr,
             epochs          = cfg.TRAIN.epochs,
             log_interval    = cfg.TRAIN.log_interval,
-            use_wandb       = cfg.TRAIN.use_wandb,
+            use_wandb       = cfg.TRAIN.wandb.use,
             savedir         = savedir,
             seed            = cfg.DEFAULT.seed,
             accelerator     = accelerator,
@@ -87,14 +88,15 @@ def run(cfg):
         os.makedirs(savedir, exist_ok=True)
         
         # initialize wandb
-        if cfg.TRAIN.use_wandb:
-            wandb.init(name=cfg.DEFAULT.exp_name, project='Active Learning - Benchmark', entity='dsba-al-2023', config=cfg)  
+        if cfg.TRAIN.wandb.use:
+            wandb.init(name=cfg.DEFAULT.exp_name, project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=cfg)  
         
         # run full supervised learning
         full_run(
             modelname       = cfg.MODEL.modelname,
             pretrained      = cfg.MODEL.pretrained,
             trainset        = trainset,
+            validset        = testset,
             testset         = testset,
             img_size        = cfg.DATASET.img_size,
             num_classes     = cfg.DATASET.num_classes,
@@ -105,7 +107,7 @@ def run(cfg):
             lr              = cfg.OPTIMIZER.lr,
             epochs          = cfg.TRAIN.epochs,
             log_interval    = cfg.TRAIN.log_interval,
-            use_wandb       = cfg.TRAIN.use_wandb,
+            use_wandb       = cfg.TRAIN.wandb.use,
             savedir         = savedir,
             seed            = cfg.DEFAULT.seed,
             accelerator     = accelerator

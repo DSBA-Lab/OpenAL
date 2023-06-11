@@ -3,7 +3,6 @@ import wandb
 import time
 import os
 import json
-import random
 
 import numpy as np
 import pandas as pd
@@ -11,6 +10,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from collections import OrderedDict
+from accelerate import Accelerator
 
 from query_strategies import create_query_strategy
 from models import create_model
@@ -52,7 +52,7 @@ def accuracy(outputs, targets, return_correct=False):
         return correct/targets.size(0)
 
 
-def train(model, dataloader, criterion, optimizer, accelerator, log_interval: int) -> dict:   
+def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     acc_m = AverageMeter()
@@ -128,12 +128,12 @@ def test(model, dataloader, criterion, log_interval: int) -> dict:
     return OrderedDict([('acc',correct/total), ('loss',total_loss/len(dataloader))])
                 
 def fit(
-    model, trainloader, testloader, criterion, optimizer, scheduler, accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, savedir: str = None
+    model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
+    epochs: int, use_wandb: bool, log_interval: int, seed: int = None, savedir: str = None, ckp_metric: str = None
 ) -> None:
 
     step = 0
-    best_acc = 0
+    best_score = 0
     for epoch in range(epochs):
         _logger.info(f'\nEpoch: {epoch+1}/{epochs}')
         train_metrics = train(
@@ -165,22 +165,22 @@ def fit(
         step += 1
         
         # checkpoint - save best results and model weights
-        if savedir and (best_acc < eval_metrics['acc']):
-            best_acc = eval_metrics['acc']
+        if savedir and (best_score < eval_metrics[ckp_metric]):
+            best_score = eval_metrics[ckp_metric]
             state = {'best_step':step}
             state.update(eval_metrics)
-            json.dump(state, open(os.path.join(savedir, 'best_results.json'), 'w'), indent='\t')
-            torch.save(model.state_dict(), os.path.join(savedir, 'model.pt'))
+            json.dump(state, open(os.path.join(savedir, f'best_results_seed{seed}.json'), 'w'), indent='\t')
+            torch.save(model.state_dict(), os.path.join(savedir, f'model_seed{seed}_best.pt'))
     
     return eval_metrics
 
 
 def full_run(
     modelname: str, pretrained: bool,
-    trainset, testset, 
+    trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
     opt_name: str, lr: float, 
-    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator):
+    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None):
     
     # logging
     _logger.info('Full Supervised Learning, [total samples] {}'.format(len(trainset)))
@@ -190,6 +190,14 @@ def full_run(
         dataset     = trainset,
         batch_size  = batch_size,
         shuffle     = True,
+        num_workers = num_workers
+    )
+    
+    # define test dataloader
+    validloader = DataLoader(
+        dataset     = validset,
+        batch_size  = test_batch_size,
+        shuffle     = False,
         num_workers = num_workers
     )
     
@@ -219,15 +227,15 @@ def full_run(
     criterion = torch.nn.CrossEntropyLoss()
     
     # prepraring accelerator
-    model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
-        model, optimizer, trainloader, testloader, scheduler
+    model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+        model, optimizer, trainloader, validloader, testloader, scheduler
     )
 
     # fitting model
-    test_results = fit(
+    _ = fit(
         model        = model, 
         trainloader  = trainloader, 
-        testloader   = testloader, 
+        testloader   = validloader, 
         criterion    = criterion, 
         optimizer    = optimizer, 
         scheduler    = scheduler,
@@ -235,10 +243,21 @@ def full_run(
         epochs       = epochs, 
         use_wandb    = use_wandb,
         log_interval = log_interval,
+        savedir      = savedir if validset != testset else None,
+        seed         = seed if validset != testset else None,
+        ckp_metric   = ckp_metric if validset != testset else None
     )
     
     # save model
     torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+
+    # test results
+    test_results = test(
+        model        = model, 
+        dataloader   = testloader, 
+        criterion    = criterion, 
+        log_interval = log_interval
+    )
 
     # save result
     json.dump(test_results, open(os.path.join(savedir, f'results_seed{seed}.json'), 'w'), indent='\t')
@@ -247,10 +266,10 @@ def full_run(
 def al_run(
     exp_name: str, modelname: str, pretrained: bool,
     strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, 
-    trainset, testset, 
+    trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
     opt_name: str, lr: float, 
-    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator, cfg: dict = None):
+    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None, cfg: dict = None):
     
     assert cfg != None if use_wandb else True, 'If you use wandb, configs should be exist.'
     
@@ -293,7 +312,15 @@ def al_run(
         num_workers = num_workers
     )
     
-     # define test dataloader
+    # define test dataloader
+    validloader = DataLoader(
+        dataset     = validset,
+        batch_size  = test_batch_size,
+        shuffle     = False,
+        num_workers = num_workers
+    )
+    
+    # define test dataloader
     testloader = DataLoader(
         dataset     = testset,
         batch_size  = test_batch_size,
@@ -303,7 +330,7 @@ def al_run(
     
     # define log df
     log_df = pd.DataFrame(
-        columns=['round','acc']
+        columns=['round', ckp_metric]
     )
     
     # run
@@ -327,19 +354,19 @@ def al_run(
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
         
         # prepraring accelerator
-        model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
-            model, optimizer, trainloader, testloader, scheduler
+        model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+            model, optimizer, trainloader, validloader, testloader, scheduler
         )
         
         # initialize wandb
         if use_wandb:
-            wandb.init(name=f'{exp_name}_round{r}', project='Active Learning - Benchmark', entity='dsba-al-2023', config=cfg)        
+            wandb.init(name=f'{exp_name}_round{r}', project=cfg.wandb.project_name, entity=cfg.wandb.entity, config=cfg)        
 
         # fitting model
-        test_results = fit(
+        _ = fit(
             model        = model, 
             trainloader  = trainloader, 
-            testloader   = testloader, 
+            testloader   = validloader, 
             criterion    = strategy.loss_fn, 
             optimizer    = optimizer, 
             scheduler    = scheduler,
@@ -347,15 +374,24 @@ def al_run(
             epochs       = epochs, 
             use_wandb    = use_wandb,
             log_interval = log_interval,
+            savedir      = savedir if validset != testset else None
         )
         
         # save model
         torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
 
+        # test results
+        test_results = test(
+            model        = model, 
+            dataloader   = testloader, 
+            criterion    = strategy.loss_fn, 
+            log_interval = log_interval
+        )
+
         # save results
         log_df = log_df.append({
             'round' : r,
-            'acc'   : test_results['acc']
+            ckp_metric   : test_results[ckp_metric]
         }, ignore_index=True)
         
         log_df.to_csv(
