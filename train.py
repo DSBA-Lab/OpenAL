@@ -215,17 +215,20 @@ def fit(
             name         = 'VALID'
         )
 
-        if scheduler:
-            scheduler.step()
-
         # wandb
         if use_wandb:
             metrics = OrderedDict(lr=optimizer.param_groups[0]['lr'])
             metrics.update([('train_' + k, v) for k, v in train_metrics.items()])
             metrics.update([('eval_' + k, v) for k, v in eval_metrics.items()])
             wandb.log(metrics, step=step)
-
+        
         step += 1
+        
+        # update scheduler  
+        if scheduler:
+            scheduler.step()
+
+        
         
         # checkpoint - save best results and model weights
         if ckp_metric:
@@ -315,6 +318,9 @@ def full_run(
     
     # save model
     torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+
+    # load best checkpoint 
+    model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
 
     # test results
     test_results = test(
@@ -455,6 +461,9 @@ def al_run(
         
         # save model
         torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+
+        # load best checkpoint 
+        model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
 
         # test results
         test_results = test(
