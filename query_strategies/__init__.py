@@ -4,3 +4,4 @@ from .margin_sampling import MarginSampling
 from .entropy_sampling import EntropySampling
 from .random import RandomSampling
 from .factory import create_query_strategy
+from .featmix_sampling import AlphaMixSampling
