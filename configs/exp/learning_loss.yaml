@@ -1,0 +1,18 @@
+AL:
+  strategy: LearningLossAL
+MODEL:
+  params:
+    loss_weight: 1.0
+    margin: 1.0
+    layer_ids:
+    - layer1
+    - layer2
+    - layer3
+    - layer4
+    in_features_list:
+    - 64
+    - 128
+    - 256
+    - 512
+    out_features: 128
+    

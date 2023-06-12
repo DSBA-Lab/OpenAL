@@ -1,0 +1,30 @@
+DEFAULT:
+  seed: 0
+  savedir: ./results/exp
+DATASET:
+  datadir: /datasets
+  dataname: SamsungAL
+  batch_size: 32
+  test_batch_size: 32
+  num_workers: 12
+OPTIMIZER:
+  opt_name: SGD
+  lr: 0.1
+TRAIN:
+  epochs: 50
+  grad_accum_steps: 1
+  mixed_precision: fp16
+  log_interval: 10
+  ckp_metric: bcr
+  wandb:
+    use: true
+    entity: dsba-al-2023
+    project_name: Active Learning - SamsungAL
+MODEL:
+  modelname: resnetv2_50x1_bitm
+  pretrained: false
+AL:
+  n_start: 5000
+  n_query: 500
+  n_end: 10000
+  n_subset: null
