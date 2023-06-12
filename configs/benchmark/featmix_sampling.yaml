@@ -1,0 +1,25 @@
+DEFAULT:
+  seed: 0
+  savedir: ./results/benchmark
+DATASET:
+  datadir: /datasets
+  batch_size: 32
+  test_batch_size: 2048
+  num_workers: 0
+OPTIMIZER:
+  opt_name: SGD
+  lr: 0.1
+TRAIN:
+  epochs: 50
+  grad_accum_steps: 1
+  mixed_precision: fp16
+  log_interval: 10
+MODEL:
+  modelname: resnet18
+  pretrained: true
+AL:
+  strategy: AlphaMixSampling
+  n_start: 1000
+  n_query: 500
+  n_end: 10000
+  n_subset: null
