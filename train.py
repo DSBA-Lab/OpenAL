@@ -12,10 +12,14 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from collections import OrderedDict
 from accelerate import Accelerator
 
-from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, balanced_accuracy_score
+from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, \
+                            balanced_accuracy_score, classification_report, confusion_matrix, accuracy_score
 
 from query_strategies import create_query_strategy
 from models import create_model
+from utils import NoIndent, MyEncoder
+
+from omegaconf import OmegaConf
 
 _logger = logging.getLogger('train')
 
@@ -48,24 +52,46 @@ def accuracy(outputs, targets, return_correct=False):
         return correct/targets.size(0)
 
 
-def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list) -> dict:
+def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_class: bool = False) -> dict:
     # softmax
     y_score = torch.nn.functional.softmax(torch.FloatTensor(y_score), dim=1)
     
     # metrics
-    auroc = roc_auc_score(y_true, y_score, average='weighted', multi_class='ovr')
-    f1 = f1_score(y_true, y_pred, average='weighted')
-    recall = recall_score(y_true, y_pred, average='weighted')
-    precision = precision_score(y_true, y_pred, average='weighted')
+    auroc = roc_auc_score(y_true, y_score, average='macro', multi_class='ovr')
+    f1 = f1_score(y_true, y_pred, average='macro')
+    recall = recall_score(y_true, y_pred, average='macro')
+    precision = precision_score(y_true, y_pred, average='macro')
     bcr = balanced_accuracy_score(y_true, y_pred)
 
-    return {
+    metrics = {
         'auroc'     : auroc, 
         'f1'        : f1, 
         'recall'    : recall, 
         'precision' : precision,
         'bcr'       : bcr
     }
+
+    if return_per_class:
+        # confusion matrix
+        cm = confusion_matrix(y_true, y_pred)
+        
+        # merics per class
+        f1_per_class = f1_score(y_true, y_pred, average=None)
+        recall_per_class = recall_score(y_true, y_pred, average=None)
+        precision_per_class = precision_score(y_true, y_pred, average=None)
+        acc_per_class = cm.diagonal() / cm.sum(axis=1)
+    
+        metrics.update({
+            'per_class':{
+                'cm': [NoIndent(elem) for elem in cm.tolist()],
+                'f1': f1_per_class.tolist(),
+                'recall': recall_per_class.tolist(),
+                'precision': precision_per_class.tolist(),
+                'acc': acc_per_class.tolist()
+            }
+        })
+
+    return metrics
 
 
 def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int) -> dict:   
@@ -139,10 +165,13 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     _logger.info('\nTRAIN: Loss: %.3f | Acc: %.3f%% | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % 
                  (metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
     
+    # classification report
+    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4))
+    
     return metrics
         
         
-def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST') -> dict:
+def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False) -> dict:
     correct = 0
     total = 0
     total_loss = 0
@@ -175,9 +204,10 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST') ->
     
     # calculate metrics
     metrics = calc_metrics(
-        y_true  = total_targets,
-        y_score = total_score,
-        y_pred  = total_preds
+        y_true           = total_targets,
+        y_score          = total_score,
+        y_pred           = total_preds,
+        return_per_class = return_per_class
     )
     
     metrics.update([('acc',correct/total), ('loss',total_loss/len(dataloader))])
@@ -185,6 +215,9 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST') ->
     # logging metrics
     _logger.info('\n%s: Loss: %.3f | Acc: %.3f%% | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % 
                  (name, metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
+    
+    # classification report
+    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4))
     
     return metrics
             
@@ -227,8 +260,6 @@ def fit(
         # update scheduler  
         if scheduler:
             scheduler.step()
-
-        
         
         # checkpoint - save best results and model weights
         if ckp_metric:
@@ -239,15 +270,13 @@ def fit(
                 state.update(eval_metrics)
                 json.dump(state, open(os.path.join(savedir, f'results_seed{seed}_best.json'), 'w'), indent='\t')
                 torch.save(model.state_dict(), os.path.join(savedir, f'model_seed{seed}_best.pt'))
-    
-    return eval_metrics
 
 
 def full_run(
     modelname: str, pretrained: bool,
     trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
-    opt_name: str, lr: float, 
+    opt_name: str, lr: float, opt_params: dict,
     epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None):
     
     # logging
@@ -286,7 +315,7 @@ def full_run(
     )
     
     # optimizer
-    optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr)
+    optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr, **opt_params)
 
     # scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
@@ -300,7 +329,7 @@ def full_run(
     )
 
     # fitting model
-    _ = fit(
+    fit(
         model        = model, 
         trainloader  = trainloader, 
         testloader   = validloader, 
@@ -318,28 +347,39 @@ def full_run(
     
     # save model
     torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
-
-    # load best checkpoint 
-    model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
+    
+    if validset != testset:
+        # load best checkpoint 
+        model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
 
     # test results
     test_results = test(
-        model        = model, 
-        dataloader   = testloader, 
-        criterion    = criterion, 
-        log_interval = log_interval
+        model            = model, 
+        dataloader       = testloader, 
+        criterion        = criterion, 
+        log_interval     = log_interval,
+        return_per_class = True
     )
 
-    # save result
-    json.dump(test_results, open(os.path.join(savedir, f'results_seed{seed}.json'), 'w'), indent='\t')
+    # save results per class
+    json.dump(
+        obj    = test_results['per_class'], 
+        fp     = open(os.path.join(savedir, f"results-seed{seed}-per_class.json"), 'w'), 
+        cls    = MyEncoder,
+        indent = '\t'
+    )
+    del test_results['per_class']
 
+    # save results
+    json.dump(test_results, open(os.path.join(savedir, f'results-seed{seed}.json'), 'w'), indent='\t')
+    
 
 def al_run(
     exp_name: str, modelname: str, pretrained: bool,
     strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, 
     trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
-    opt_name: str, lr: float, 
+    opt_name: str, lr: float, opt_params: dict,
     epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None, cfg: dict = None):
     
     assert cfg != None if use_wandb else True, 'If you use wandb, configs should be exist.'
@@ -383,21 +423,6 @@ def al_run(
         num_workers = num_workers
     )
     
-    # define test dataloader
-    validloader = DataLoader(
-        dataset     = validset,
-        batch_size  = test_batch_size,
-        shuffle     = False,
-        num_workers = num_workers
-    )
-    
-    # define test dataloader
-    testloader = DataLoader(
-        dataset     = testset,
-        batch_size  = test_batch_size,
-        shuffle     = False,
-        num_workers = num_workers
-    )
     
     # define log dataframe
     log_df = pd.DataFrame(
@@ -409,17 +434,27 @@ def al_run(
     query_log_df['query_round'] = None
     query_log_df.loc[labeled_idx, 'query_round'] = 'round0'
     
+    # define dict to save confusion matrix and metrics per class
+    metrics_log = {}
+    
     # run
     for r in range(nb_round+1):
         
         if r != 0:    
             # query sampling    
             query_idx = strategy.query(model, n_subset=n_subset)
-            trainloader = strategy.update(query_idx)
             
             # save query index
             query_log_df.loc[query_idx, 'query_round'] = f'round{r}'
             query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
+            
+            # clean memory
+            del model, optimizer, scheduler, trainloader, validloader, testloader
+            accelerator.free_memory()
+            
+            # update query
+            trainloader = strategy.update(query_idx)
+            
             
         # logging
         _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
@@ -428,10 +463,26 @@ def al_run(
         model = strategy.init_model()
         
         # optimizer
-        optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr)
+        optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr, **opt_params)
 
         # scheduler
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
+        
+        # define test dataloader
+        validloader = DataLoader(
+            dataset     = validset,
+            batch_size  = test_batch_size,
+            shuffle     = False,
+            num_workers = num_workers
+        )
+        
+        # define test dataloader
+        testloader = DataLoader(
+            dataset     = testset,
+            batch_size  = test_batch_size,
+            shuffle     = False,
+            num_workers = num_workers
+        )
         
         # prepraring accelerator
         model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
@@ -440,10 +491,10 @@ def al_run(
         
         # initialize wandb
         if use_wandb:
-            wandb.init(name=f'{exp_name}_round{r}', project=cfg.wandb.project_name, entity=cfg.wandb.entity, config=cfg)        
+            wandb.init(name=f'{exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
         # fitting model
-        _ = fit(
+        fit(
             model        = model, 
             trainloader  = trainloader, 
             testloader   = validloader, 
@@ -467,13 +518,27 @@ def al_run(
 
         # test results
         test_results = test(
-            model        = model, 
-            dataloader   = testloader, 
-            criterion    = strategy.loss_fn, 
-            log_interval = log_interval
+            model            = model, 
+            dataloader       = testloader, 
+            criterion        = strategy.loss_fn, 
+            log_interval     = log_interval,
+            return_per_class = True
         )
 
-        # save results
+        # save results per class
+        metrics_log.update({
+            f'round{r}': test_results['per_class']
+        })
+        json.dump(
+            obj    = metrics_log, 
+            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{seed}-per_class.json"), 'w'), 
+            cls    = MyEncoder,
+            indent = '\t'
+        )
+        
+        del test_results['per_class']
+        
+        # save results 
         log_metrics = {'round':r}
         log_metrics.update([(k, v) for k, v in test_results.items()])
         log_df = log_df.append(log_metrics, ignore_index=True)
@@ -482,6 +547,7 @@ def al_run(
             os.path.join(savedir, f"round{nb_round}-seed{seed}.csv"),
             index=False
         )   
+        
         
         _logger.info('append result [shape: {}]'.format(log_df.shape))
         
