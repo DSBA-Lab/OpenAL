@@ -14,6 +14,15 @@ TRAIN:
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
+  wandb:
+    use: true
+    entity: dsba-al-2023
+    project_name: Active Learning - Benchmark
 MODEL:
   modelname: resnet18
   pretrained: false
+AL:
+  n_start: 1000
+  n_query: 500
+  n_end: 10000
+  n_subset: null

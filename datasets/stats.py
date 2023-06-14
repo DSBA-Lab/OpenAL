@@ -1,4 +1,10 @@
 datasets = {
+    "SamsungAL":{
+        "num_classes" : 4,
+        "img_size"    : 224,
+        "mean"        : (0.4998, 0.4998, 0.4998),
+        "std"         : (0.1099, 0.1099, 0.1099)
+    },
     "ImageNet-1k":{
         "num_classes" : 1000,
         "img_size"    : 224,

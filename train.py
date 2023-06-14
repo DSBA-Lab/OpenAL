@@ -3,7 +3,6 @@ import wandb
 import time
 import os
 import json
-import random
 
 import numpy as np
 import pandas as pd
@@ -11,6 +10,9 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from collections import OrderedDict
+from accelerate import Accelerator
+
+from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, balanced_accuracy_score
 
 from query_strategies import create_query_strategy
 from models import create_model
@@ -36,12 +38,6 @@ class AverageMeter:
 
 
 def accuracy(outputs, targets, return_correct=False):
-    # check type
-    if type(outputs) == torch.Tensor:
-        outputs = outputs
-    elif type(outputs) == dict:
-        outputs = outputs['logits']
-        
     # calculate accuracy
     preds = outputs.argmax(dim=1) 
     correct = targets.eq(preds).sum().item()
@@ -52,11 +48,35 @@ def accuracy(outputs, targets, return_correct=False):
         return correct/targets.size(0)
 
 
-def train(model, dataloader, criterion, optimizer, accelerator, log_interval: int) -> dict:   
+def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list) -> dict:
+    # softmax
+    y_score = torch.nn.functional.softmax(torch.FloatTensor(y_score), dim=1)
+    
+    # metrics
+    auroc = roc_auc_score(y_true, y_score, average='weighted', multi_class='ovr')
+    f1 = f1_score(y_true, y_pred, average='weighted')
+    recall = recall_score(y_true, y_pred, average='weighted')
+    precision = precision_score(y_true, y_pred, average='weighted')
+    bcr = balanced_accuracy_score(y_true, y_pred)
+
+    return {
+        'auroc'     : auroc, 
+        'f1'        : f1, 
+        'recall'    : recall, 
+        'precision' : precision,
+        'bcr'       : bcr
+    }
+
+
+def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     acc_m = AverageMeter()
     losses_m = AverageMeter()
+    
+    total_preds = []
+    total_score = []
+    total_targets = []
     
     end = time.time()
     
@@ -79,6 +99,12 @@ def train(model, dataloader, criterion, optimizer, accelerator, log_interval: in
             # accuracy            
             acc_m.update(accuracy(outputs, targets), n=targets.size(0))
             
+            # stack output
+            total_preds.extend(outputs.argmax(dim=1).detach().cpu().tolist())
+            total_score.extend(outputs.detach().cpu().tolist())
+            total_targets.extend(targets.detach().cpu().tolist())
+            
+            # batch time
             batch_time_m.update(time.time() - end)
         
             if (idx+1) % accelerator.gradient_accumulation_steps == 0:
@@ -100,13 +126,30 @@ def train(model, dataloader, criterion, optimizer, accelerator, log_interval: in
     
             end = time.time()
     
-    return OrderedDict([('acc',acc_m.avg), ('loss',losses_m.avg)])
+    # calculate metrics
+    metrics = calc_metrics(
+        y_true  = total_targets,
+        y_score = total_score,
+        y_pred  = total_preds
+    )
+    
+    metrics.update([('acc',acc_m.avg), ('loss',losses_m.avg)])
+    
+    # logging metrics
+    _logger.info('\nTRAIN: Loss: %.3f | Acc: %.3f%% | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % 
+                 (metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
+    
+    return metrics
         
         
-def test(model, dataloader, criterion, log_interval: int) -> dict:
+def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST') -> dict:
     correct = 0
     total = 0
     total_loss = 0
+    
+    total_preds = []
+    total_score = []
+    total_targets = []
     
     model.eval()
     with torch.no_grad():
@@ -122,18 +165,37 @@ def test(model, dataloader, criterion, log_interval: int) -> dict:
             correct += accuracy(outputs, targets, return_correct=True)
             total += targets.size(0)
             
+            # stack output
+            total_preds.extend(outputs.argmax(dim=1).cpu().tolist())
+            total_score.extend(outputs.cpu().tolist())
+            total_targets.extend(targets.cpu().tolist())
+            
             if (idx+1) % log_interval == 0: 
-                _logger.info('TEST [{0:d}/{1:d}]: Loss: {2:.3f} | Acc: {3:.3f}% [{4:d}/{5:d}]'.format(idx+1, len(dataloader), total_loss/(idx+1), 100.*correct/total, correct, total))
-                
-    return OrderedDict([('acc',correct/total), ('loss',total_loss/len(dataloader))])
+                _logger.info('{0:s} [{1:d}/{2:d}]: Loss: {3:.3f} | Acc: {4:.3f}% [{5:d}/{6:d}]'.format(name, idx+1, len(dataloader), total_loss/(idx+1), 100.*correct/total, correct, total))
+    
+    # calculate metrics
+    metrics = calc_metrics(
+        y_true  = total_targets,
+        y_score = total_score,
+        y_pred  = total_preds
+    )
+    
+    metrics.update([('acc',correct/total), ('loss',total_loss/len(dataloader))])
+    
+    # logging metrics
+    _logger.info('\n%s: Loss: %.3f | Acc: %.3f%% | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % 
+                 (name, metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
+    
+    return metrics
+            
                 
 def fit(
-    model, trainloader, testloader, criterion, optimizer, scheduler, accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, savedir: str = None
+    model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
+    epochs: int, use_wandb: bool, log_interval: int, seed: int = None, savedir: str = None, ckp_metric: str = None
 ) -> None:
 
     step = 0
-    best_acc = 0
+    best_score = 0
     for epoch in range(epochs):
         _logger.info(f'\nEpoch: {epoch+1}/{epochs}')
         train_metrics = train(
@@ -149,11 +211,9 @@ def fit(
             model        = model, 
             dataloader   = testloader, 
             criterion    = criterion, 
-            log_interval = log_interval
+            log_interval = log_interval,
+            name         = 'VALID'
         )
-
-        if scheduler:
-            scheduler.step()
 
         # wandb
         if use_wandb:
@@ -161,26 +221,34 @@ def fit(
             metrics.update([('train_' + k, v) for k, v in train_metrics.items()])
             metrics.update([('eval_' + k, v) for k, v in eval_metrics.items()])
             wandb.log(metrics, step=step)
-
+        
         step += 1
         
+        # update scheduler  
+        if scheduler:
+            scheduler.step()
+
+        
+        
         # checkpoint - save best results and model weights
-        if savedir and (best_acc < eval_metrics['acc']):
-            best_acc = eval_metrics['acc']
-            state = {'best_step':step}
-            state.update(eval_metrics)
-            json.dump(state, open(os.path.join(savedir, 'best_results.json'), 'w'), indent='\t')
-            torch.save(model.state_dict(), os.path.join(savedir, 'model.pt'))
+        if ckp_metric:
+            ckp_cond = (best_score > eval_metrics[ckp_metric]) if ckp_metric == 'loss' else (best_score < eval_metrics[ckp_metric])
+            if savedir and ckp_cond:
+                best_score = eval_metrics[ckp_metric]
+                state = {'best_step':step}
+                state.update(eval_metrics)
+                json.dump(state, open(os.path.join(savedir, f'results_seed{seed}_best.json'), 'w'), indent='\t')
+                torch.save(model.state_dict(), os.path.join(savedir, f'model_seed{seed}_best.pt'))
     
     return eval_metrics
 
 
 def full_run(
     modelname: str, pretrained: bool,
-    trainset, testset, 
+    trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
     opt_name: str, lr: float, 
-    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator):
+    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None):
     
     # logging
     _logger.info('Full Supervised Learning, [total samples] {}'.format(len(trainset)))
@@ -190,6 +258,14 @@ def full_run(
         dataset     = trainset,
         batch_size  = batch_size,
         shuffle     = True,
+        num_workers = num_workers
+    )
+    
+    # define test dataloader
+    validloader = DataLoader(
+        dataset     = validset,
+        batch_size  = test_batch_size,
+        shuffle     = False,
         num_workers = num_workers
     )
     
@@ -219,15 +295,15 @@ def full_run(
     criterion = torch.nn.CrossEntropyLoss()
     
     # prepraring accelerator
-    model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
-        model, optimizer, trainloader, testloader, scheduler
+    model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+        model, optimizer, trainloader, validloader, testloader, scheduler
     )
 
     # fitting model
-    test_results = fit(
+    _ = fit(
         model        = model, 
         trainloader  = trainloader, 
-        testloader   = testloader, 
+        testloader   = validloader, 
         criterion    = criterion, 
         optimizer    = optimizer, 
         scheduler    = scheduler,
@@ -235,10 +311,24 @@ def full_run(
         epochs       = epochs, 
         use_wandb    = use_wandb,
         log_interval = log_interval,
+        savedir      = savedir if validset != testset else None,
+        seed         = seed if validset != testset else None,
+        ckp_metric   = ckp_metric if validset != testset else None
     )
     
     # save model
     torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+
+    # load best checkpoint 
+    model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
+
+    # test results
+    test_results = test(
+        model        = model, 
+        dataloader   = testloader, 
+        criterion    = criterion, 
+        log_interval = log_interval
+    )
 
     # save result
     json.dump(test_results, open(os.path.join(savedir, f'results_seed{seed}.json'), 'w'), indent='\t')
@@ -247,10 +337,10 @@ def full_run(
 def al_run(
     exp_name: str, modelname: str, pretrained: bool,
     strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, 
-    trainset, testset, 
+    trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
     opt_name: str, lr: float, 
-    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator, cfg: dict = None):
+    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None, cfg: dict = None):
     
     assert cfg != None if use_wandb else True, 'If you use wandb, configs should be exist.'
     
@@ -282,7 +372,7 @@ def al_run(
         n_query       = n_query, 
         batch_size    = batch_size, 
         num_workers   = num_workers,
-        params        = cfg['MODEL'].get('params', dict())
+        params        = cfg.MODEL.get('params', dict())
     )
     
     # define train dataloader
@@ -293,7 +383,15 @@ def al_run(
         num_workers = num_workers
     )
     
-     # define test dataloader
+    # define test dataloader
+    validloader = DataLoader(
+        dataset     = validset,
+        batch_size  = test_batch_size,
+        shuffle     = False,
+        num_workers = num_workers
+    )
+    
+    # define test dataloader
     testloader = DataLoader(
         dataset     = testset,
         batch_size  = test_batch_size,
@@ -301,10 +399,15 @@ def al_run(
         num_workers = num_workers
     )
     
-    # define log df
+    # define log dataframe
     log_df = pd.DataFrame(
-        columns=['round','acc']
+        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
     )
+    
+    # query log dataframe
+    query_log_df = pd.DataFrame({'idx': range(len(labeled_idx))})
+    query_log_df['query_round'] = None
+    query_log_df.loc[labeled_idx, 'query_round'] = 'round0'
     
     # run
     for r in range(nb_round+1):
@@ -313,6 +416,10 @@ def al_run(
             # query sampling    
             query_idx = strategy.query(model, n_subset=n_subset)
             trainloader = strategy.update(query_idx)
+            
+            # save query index
+            query_log_df.loc[query_idx, 'query_round'] = f'round{r}'
+            query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
             
         # logging
         _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
@@ -327,19 +434,19 @@ def al_run(
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
         
         # prepraring accelerator
-        model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
-            model, optimizer, trainloader, testloader, scheduler
+        model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+            model, optimizer, trainloader, validloader, testloader, scheduler
         )
         
         # initialize wandb
         if use_wandb:
-            wandb.init(name=f'{exp_name}_round{r}', project='Active Learning - Benchmark', entity='dsba-al-2023', config=cfg)        
+            wandb.init(name=f'{exp_name}_round{r}', project=cfg.wandb.project_name, entity=cfg.wandb.entity, config=cfg)        
 
         # fitting model
-        test_results = fit(
+        _ = fit(
             model        = model, 
             trainloader  = trainloader, 
-            testloader   = testloader, 
+            testloader   = validloader, 
             criterion    = strategy.loss_fn, 
             optimizer    = optimizer, 
             scheduler    = scheduler,
@@ -347,21 +454,34 @@ def al_run(
             epochs       = epochs, 
             use_wandb    = use_wandb,
             log_interval = log_interval,
+            savedir      = savedir if validset != testset else None,
+            seed         = seed if validset != testset else None,
+            ckp_metric   = ckp_metric if validset != testset else None
         )
         
         # save model
         torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
 
+        # load best checkpoint 
+        model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
+
+        # test results
+        test_results = test(
+            model        = model, 
+            dataloader   = testloader, 
+            criterion    = strategy.loss_fn, 
+            log_interval = log_interval
+        )
+
         # save results
-        log_df = log_df.append({
-            'round' : r,
-            'acc'   : test_results['acc']
-        }, ignore_index=True)
+        log_metrics = {'round':r}
+        log_metrics.update([(k, v) for k, v in test_results.items()])
+        log_df = log_df.append(log_metrics, ignore_index=True)
         
-        log_df.to_csv(
-            os.path.join(savedir, f"round_{nb_round}-seed{seed}.csv"),
+        log_df.round(4).to_csv(
+            os.path.join(savedir, f"round{nb_round}-seed{seed}.csv"),
             index=False
-        )    
+        )   
         
         _logger.info('append result [shape: {}]'.format(log_df.shape))
         

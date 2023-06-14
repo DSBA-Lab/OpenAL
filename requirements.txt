@@ -2,3 +2,4 @@ accelerate
 wandb
 torchvision
 gradio
+omegaconf

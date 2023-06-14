@@ -7,6 +7,7 @@ import logging
 from arguments import parser
 
 from train import al_run, full_run
+from datasets import create_dataset
 from log import setup_default_logging
 
 from accelerate import Accelerator
@@ -41,10 +42,11 @@ def run(cfg):
     _logger.info('Device: {}'.format(accelerator.device))
 
     # load dataset
-    trainset, testset = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
+    trainset, validset, testset = create_dataset(
         datadir  = cfg.DATASET.datadir, 
+        dataname = cfg.DATASET.dataname,
         img_size = cfg.DATASET.img_size,
-        mean     = cfg.DATASET.mean, 
+        mean     = cfg.DATASET.mean,
         std      = cfg.DATASET.std
     )
     
@@ -56,7 +58,7 @@ def run(cfg):
         
         # run active learning
         al_run(
-            exp_name        = cfg.DEFAULT.exp_name, 
+            exp_name        = cfg.DEFAULT.exp_name,
             modelname       = cfg.MODEL.modelname,
             pretrained      = cfg.MODEL.pretrained,
             strategy        = cfg.AL.strategy,
@@ -65,7 +67,7 @@ def run(cfg):
             n_query         = cfg.AL.n_query,
             n_subset        = cfg.AL.n_subset,
             trainset        = trainset,
-            validset        = testset,
+            validset        = validset,
             testset         = testset,
             img_size        = cfg.DATASET.img_size,
             num_classes     = cfg.DATASET.num_classes,
@@ -78,8 +80,9 @@ def run(cfg):
             log_interval    = cfg.TRAIN.log_interval,
             use_wandb       = cfg.TRAIN.wandb.use,
             savedir         = savedir,
-            seed            = cfg.DEFAULT.seed,
+            seed            = cfg.DEFAUL.seed,
             accelerator     = accelerator,
+            ckp_metric      = cfg.TRAIN.ckp_metric,
             cfg             = cfg
         )
     else:
@@ -96,7 +99,7 @@ def run(cfg):
             modelname       = cfg.MODEL.modelname,
             pretrained      = cfg.MODEL.pretrained,
             trainset        = trainset,
-            validset        = testset,
+            validset        = validset,
             testset         = testset,
             img_size        = cfg.DATASET.img_size,
             num_classes     = cfg.DATASET.num_classes,
@@ -110,10 +113,11 @@ def run(cfg):
             use_wandb       = cfg.TRAIN.wandb.use,
             savedir         = savedir,
             seed            = cfg.DEFAULT.seed,
-            accelerator     = accelerator
+            accelerator     = accelerator,
+            ckp_metric      = cfg.TRAIN.ckp_metric
         )
     
-    
+
 if __name__=='__main__':
 
     # config
