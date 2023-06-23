@@ -75,7 +75,7 @@ def run(cfg):
             num_workers     = cfg.DATASET.num_workers,
             opt_name        = cfg.OPTIMIZER.opt_name,
             lr              = cfg.OPTIMIZER.lr,
-            opt_params      = cfg.OPTIMIZER.params,
+            opt_params      = cfg.OPTIMIZER.get('params',{}),
             epochs          = cfg.TRAIN.epochs,
             log_interval    = cfg.TRAIN.log_interval,
             use_wandb       = cfg.TRAIN.wandb.use,
