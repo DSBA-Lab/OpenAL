@@ -134,7 +134,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             batch_time_m.update(time.time() - end)
         
             if (idx+1) % accelerator.gradient_accumulation_steps == 0:
-                if  ((idx+1) // accelerator.gradient_accumulation_steps) % log_interval == 0: 
+                if ((idx+1) // accelerator.gradient_accumulation_steps) % log_interval == 0: 
                     _logger.info('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
                                 'Acc: {acc.avg:.3%} '
                                 'LR: {lr:.3e} '
@@ -406,13 +406,13 @@ def al_run(
     # select strategy    
     strategy = create_query_strategy(
         strategy_name = strategy, 
-        model         = create_model(modelname=modelname, num_classes=num_classes, img_size=img_size, pretrained=pretrained),
+        model         = create_model(modelname=modelname, num_classes=num_classes, img_size=img_size, pretrained=pretrained, **cfg.MODEL.get('params',{})),
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = n_query, 
         batch_size    = batch_size, 
         num_workers   = num_workers,
-        params        = cfg.MODEL.get('params', dict())
+        params        = cfg.AL.get('params', {})
     )
     
     # define train dataloader
