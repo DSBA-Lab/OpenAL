@@ -114,6 +114,8 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             
             # predict
             outputs = model(inputs)
+
+            # calc loss
             loss = criterion(outputs, targets)    
             accelerator.backward(loss)
 
@@ -122,7 +124,9 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             optimizer.zero_grad()
             losses_m.update(loss.item())
 
-            # accuracy            
+            # accuracy 
+            if isinstance(outputs, dict):
+                outputs = outputs['logits']           
             acc_m.update(accuracy(outputs, targets), n=targets.size(0))
             
             # stack output
@@ -190,6 +194,8 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
             loss = criterion(outputs, targets)
             
             # total loss and acc
+            if isinstance(outputs, dict):
+                outputs = outputs['logits']
             total_loss += loss.item()
             correct += accuracy(outputs, targets, return_correct=True)
             total += targets.size(0)

@@ -1,18 +1,16 @@
 AL:
   strategy: LearningLossAL
-MODEL:
-  params:
+  params: # swin_base_patch4_window7_224_in22k
     loss_weight: 1.0
     margin: 1.0
     layer_ids:
-    - layer1
-    - layer2
-    - layer3
-    - layer4
+    - layers
     in_features_list:
-    - 64
     - 128
     - 256
     - 512
+    - 1024
     out_features: 128
+    in_layer: true
+    channel_last: true
     
