@@ -2,6 +2,11 @@ from omegaconf import OmegaConf
 import argparse
 from datasets import stats
 
+def none_or_str(value):
+    if value == 'None':
+        return None
+    return value
+
 def parser():
     parser = argparse.ArgumentParser(description='Active Learning - Benchmark')
     parser.add_argument('--default_setting', type=str, default=None, help='default config file')
@@ -9,6 +14,7 @@ def parser():
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
+        type=none_or_str,
         default=None,
         nargs=argparse.REMAINDER,
     )
