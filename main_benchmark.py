@@ -46,7 +46,8 @@ def run(cfg):
         datadir  = cfg.DATASET.datadir, 
         img_size = cfg.DATASET.img_size,
         mean     = cfg.DATASET.mean, 
-        std      = cfg.DATASET.std
+        std      = cfg.DATASET.std,
+        aug_info = cfg.DATASET.aug_info
     )
     
     if 'AL' in cfg.keys():

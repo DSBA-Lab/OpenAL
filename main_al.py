@@ -112,7 +112,8 @@ def run(cfg):
         dataname = cfg.DATASET.dataname,
         img_size = cfg.DATASET.img_size,
         mean     = cfg.DATASET.mean,
-        std      = cfg.DATASET.std
+        std      = cfg.DATASET.std,
+        aug_info = cfg.DATASET.aug_info
     )
     
     # add query labels annotated from previous rounds
