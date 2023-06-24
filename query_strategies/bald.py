@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from torch.utils.data import Dataset, DataLoader, Sampler, SubsetRandomSampler
+from torch.utils.data import Dataset, DataLoader
 from .strategy import Strategy,SubsetSequentialSampler
 
 class BALD(Strategy):
