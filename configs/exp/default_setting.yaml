@@ -8,10 +8,12 @@ DATASET:
   test_batch_size: 32
   num_workers: 12
 OPTIMIZER:
-  opt_name: SGD
-  lr: 0.1
+  opt_name: AdamW
+  lr: 0.00001
+  params:
+    weight_decay: 0.00001
 TRAIN:
-  epochs: 50
+  epochs: 20
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
@@ -21,10 +23,10 @@ TRAIN:
     entity: dsba-al-2023
     project_name: Active Learning - SamsungAL
 MODEL:
-  modelname: resnetv2_50x1_bitm
-  pretrained: false
+  modelname: swin_base_patch4_window7_224_in22k
+  pretrained: true
 AL:
   n_start: 5000
-  n_query: 500
-  n_end: 10000
+  n_query: 20
+  n_end: 6000
   n_subset: null

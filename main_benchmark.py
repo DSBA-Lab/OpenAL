@@ -10,6 +10,7 @@ from train import al_run, full_run
 from log import setup_default_logging
 
 from accelerate import Accelerator
+from omegaconf import OmegaConf
 
 _logger = logging.getLogger('train')
 
@@ -74,6 +75,7 @@ def run(cfg):
             num_workers     = cfg.DATASET.num_workers,
             opt_name        = cfg.OPTIMIZER.opt_name,
             lr              = cfg.OPTIMIZER.lr,
+            opt_params      = cfg.OPTIMIZER.get('params',{}),
             epochs          = cfg.TRAIN.epochs,
             log_interval    = cfg.TRAIN.log_interval,
             use_wandb       = cfg.TRAIN.wandb.use,
@@ -89,7 +91,7 @@ def run(cfg):
         
         # initialize wandb
         if cfg.TRAIN.wandb.use:
-            wandb.init(name=cfg.DEFAULT.exp_name, project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=cfg)  
+            wandb.init(name=cfg.DEFAULT.exp_name, project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
         
         # run full supervised learning
         full_run(
@@ -105,6 +107,7 @@ def run(cfg):
             num_workers     = cfg.DATASET.num_workers,
             opt_name        = cfg.OPTIMIZER.opt_name,
             lr              = cfg.OPTIMIZER.lr,
+            opt_params      = cfg.OPTIMIZER.params,
             epochs          = cfg.TRAIN.epochs,
             log_interval    = cfg.TRAIN.log_interval,
             use_wandb       = cfg.TRAIN.wandb.use,
