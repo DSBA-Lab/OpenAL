@@ -514,7 +514,8 @@ def al_run(
         torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
 
         # load best checkpoint 
-        model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
+        if validset != testset:
+            model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
 
         # test results
         test_results = test(
