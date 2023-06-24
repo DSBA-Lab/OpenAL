@@ -4,11 +4,11 @@ import math
 import numpy as np
 from torch.autograd import Variable
 
-from .strategy import Strategy
+from .strategy import Strategy, SubsetSequentialSampler
 from sklearn.cluster import KMeans
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 
 class AlphaMixSampling(Strategy):
@@ -30,10 +30,10 @@ class AlphaMixSampling(Strategy):
 
 		ulb_probs, org_ulb_embedding = self.extract_unlabeled_prob_embed(model=model, n_subset=n_subset)
 
-		probs_sorted, probs_sort_idxs = ulb_probs.sort(descending=True)
+		_, probs_sort_idxs = ulb_probs.sort(descending=True)
 		pred_1 = probs_sort_idxs[:, 0]
 
-		lb_probs, org_lb_embedding, Y = self.extract_labeled_prob_embed(model=model, n_subset=n_subset)
+		_, org_lb_embedding, Y = self.extract_labeled_prob_embed(model=model, n_subset=n_subset)
 
 		ulb_embedding = org_ulb_embedding
 		lb_embedding = org_lb_embedding
@@ -78,7 +78,6 @@ class AlphaMixSampling(Strategy):
 			c_alpha = F.normalize(org_ulb_embedding[candidate].view(candidate.sum(), -1), p=2, dim=1).detach()
 
 			selected_idxs = self.sample(min(n, candidate.sum().item()), feats=c_alpha)
-			u_selected_idxs = candidate.nonzero(as_tuple=True)[0][selected_idxs]
 			selected_idxs = unlabeled_idx[candidate][selected_idxs]
 		else:
 			selected_idxs = np.array([], dtype=np.int)
@@ -90,7 +89,6 @@ class AlphaMixSampling(Strategy):
 			selected_idxs = np.concatenate([selected_idxs, np.random.choice(np.where(idx_lb == 0)[0], remained)])
 			print('picked %d samples from RandomSampling.' % (remained))
 
-		#return np.array(selected_idxs), ulb_embedding, pred_1, ulb_probs, u_selected_idxs, idxs_unlabeled[candidate]
 		return np.array(selected_idxs)
 
 	def find_candidate_set(self, lb_embedding, ulb_embedding, pred_1, ulb_probs, alpha_cap, Y, grads):
@@ -123,14 +121,11 @@ class AlphaMixSampling(Strategy):
 			pc = out.argmax(dim=1) != pred_1
 			
 			torch.cuda.empty_cache()
-			#self.writer.add_scalar('stats/inconsistencies_%d' % i, pc.sum().item(), self.query_count)
 
 			alpha[~pc] = 1.
 			pred_change[pc] = True
 			is_min = min_alphas.norm(dim=1) > alpha.norm(dim=1)
 			min_alphas[is_min] = alpha[is_min]
-
-			#self.writer.add_scalar('stats/inconsistencies_%d' % i, pc.sum().item(), self.query_count)
 			
 		return pred_change, min_alphas
 
@@ -148,7 +143,72 @@ class AlphaMixSampling(Strategy):
 			 (cluster_idxs == i).sum() > 0])
 	
 	def calculate_optimum_alpha(self, eps, lb_embedding, ulb_embedding, ulb_grads):
-		z = (lb_embedding - ulb_embedding) #* ulb_grads
+		z = (lb_embedding - ulb_embedding)
 		alpha = (eps * z.norm(dim=1) / ulb_grads.norm(dim=1)).unsqueeze(dim=1).repeat(1, z.size(1)) * ulb_grads / (z + 1e-8)
 
 		return alpha
+
+
+	def extract_unlabeled_prob_embed(self, model, n_subset: int = None) -> torch.Tensor:         
+        
+		# define sampler
+		unlabeled_idx = np.where(self.labeled_idx==False)[0]
+		sampler = SubsetSequentialSampler(
+			indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
+		)
+
+		# unlabeled dataloader
+		dataloader = DataLoader(
+			dataset     = self.dataset,
+			batch_size  = self.batch_size,
+			sampler     = sampler,
+			num_workers = self.num_workers
+		)
+
+		# predict
+		probs = []
+		embeds = []
+
+		device = next(model.parameters()).device
+		model.eval()
+		with torch.no_grad():
+			for i, (inputs, _) in enumerate(dataloader):
+				outputs, embed = model.embed_forward(inputs.to(device))
+				outputs = torch.nn.functional.softmax(outputs, dim=1)
+				probs.append(outputs.cpu())
+				embeds.append(embed.cpu())
+
+		return torch.vstack(probs), torch.vstack(embeds)
+    
+	def extract_labeled_prob_embed(self, model, n_subset: int = None) -> torch.Tensor:         
+        
+		# define sampler
+		labeled_idx = np.where(self.labeled_idx==True)[0]
+		sampler = SubsetSequentialSampler(
+			indices = self.subset_sampling(indices=labeled_idx, n_subset=n_subset) if n_subset else labeled_idx
+		)
+
+		# unlabeled dataloader
+		dataloader = DataLoader(
+			dataset     = self.dataset,
+			batch_size  = self.batch_size,
+			sampler     = sampler,
+			num_workers = self.num_workers
+		)
+
+		# predict
+		probs = []
+		embeds = []
+		Y = []
+
+		device = next(model.parameters()).device
+		model.eval()
+		with torch.no_grad():
+			for i, (inputs, label) in enumerate(dataloader):
+				outputs, embed = model.embed_forward(inputs.to(device))
+				outputs = torch.nn.functional.softmax(outputs, dim=1)
+				probs.append(outputs.cpu())
+				embeds.append(embed.cpu())
+				Y.append(label.view(label.size(0),1).cpu())
+
+		return torch.vstack(probs), torch.vstack(embeds), torch.vstack(Y)
