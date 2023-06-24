@@ -69,7 +69,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, img_size=32):
+    def __init__(self, block, num_blocks, num_classes=10, img_size=32, drop_rate = 0.0):
         super(ResNet, self).__init__()
         self.multiply = (img_size // 32) ** 2
         
@@ -83,6 +83,8 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
         self.linear = nn.Linear(512*block.expansion*self.multiply, num_classes)
+        
+        self.drop_rate = drop_rate
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -100,26 +102,27 @@ class ResNet(nn.Module):
         out = self.layer4(out)
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
-    
+        if self.drop_rate:
+            x = F.dropout(x, p=float(self.drop_rate), training=self.training)
         out = self.linear(out)
         return out
 
 
-def resnet18(num_classes: int = 10, img_size: int = 32):
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, img_size)
+def resnet18(num_classes: int = 10, img_size: int = 32, **kwargs):
+    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes, img_size, **kwargs)
 
 
-def resnet34(num_classes: int = 10, img_size: int = 32):
-    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes, img_size)
+def resnet34(num_classes: int = 10, img_size: int = 32, **kwargs):
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes, img_size, **kwargs)
 
 
-def resnet50(num_classes: int = 10, img_size: int = 32):
-    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes, img_size)
+def resnet50(num_classes: int = 10, img_size: int = 32, **kwargs):
+    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes, img_size, **kwargs)
 
 
-def resnet101(num_classes: int = 10, img_size: int = 32):
-    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes, img_size)
+def resnet101(num_classes: int = 10, img_size: int = 32, **kwargs):
+    return ResNet(Bottleneck, [3, 4, 23, 3], num_classes, img_size, **kwargs)
 
 
-def resnet152(num_classes: int = 10, img_size: int = 32):
-    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes, img_size)
+def resnet152(num_classes: int = 10, img_size: int = 32, **kwargs):
+    return ResNet(Bottleneck, [3, 8, 36, 3], num_classes, img_size, **kwargs)
