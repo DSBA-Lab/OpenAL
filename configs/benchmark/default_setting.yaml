@@ -6,6 +6,10 @@ DATASET:
   batch_size: 32
   test_batch_size: 2048
   num_workers: 12
+  aug_info:
+    - RandomCrop:
+        padding: 4
+    - RandomHorizontalFlip
 OPTIMIZER:
   opt_name: SGD
   lr: 0.1

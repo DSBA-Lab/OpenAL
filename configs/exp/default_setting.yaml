@@ -7,6 +7,10 @@ DATASET:
   batch_size: 32
   test_batch_size: 32
   num_workers: 12
+  aug_info:
+    - RandomCrop:
+        padding: 4
+    - RandomHorizontalFlip
 OPTIMIZER:
   opt_name: AdamW
   lr: 0.00001
