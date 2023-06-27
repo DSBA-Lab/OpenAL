@@ -2,10 +2,17 @@ from omegaconf import OmegaConf
 import argparse
 from datasets import stats
 
-def none_or_str(value):
+def convert_type(value):
     if value == 'None':
         return None
-    return value
+    elif len(value.split(',')) > 1:
+        return value.split(',')
+    
+    try:
+        if isinstance(eval(value), bool):
+            return eval(value)
+    except:
+        return value
 
 def parser():
     parser = argparse.ArgumentParser(description='Active Learning - Benchmark')
@@ -14,7 +21,6 @@ def parser():
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
-        type=none_or_str,
         default=None,
         nargs=argparse.REMAINDER,
     )
@@ -39,10 +45,7 @@ def parser():
         if k == 'DEFAULT.exp_name':
             cfg.DEFAULT.exp_name = f'{cfg.DEFAULT.exp_name}-{v}'
         else:
-            try:
-                OmegaConf.update(cfg, k, eval(v), merge=True)
-            except:
-                OmegaConf.update(cfg, k, v, merge=True)
+            OmegaConf.update(cfg, k, convert_type(v), merge=True)
        
     # load dataset statistics
     cfg.DATASET.update(stats.datasets[cfg.DATASET.dataname])
