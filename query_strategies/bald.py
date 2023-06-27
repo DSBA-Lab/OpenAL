@@ -22,10 +22,9 @@ class BALD(Strategy):
         self.num_mcdropout = num_mcdropout
         
         
-    def extarct_unlabeled_prob(self,model,n_subset: int = None) -> torch.Tensor:
+    def extarct_unlabeled_prob(self, model, n_subset: int = None) -> torch.Tensor:
         # define sampler
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]
-        unlabeled_idx = np.random.choice(unlabeled_idx, size=2000, replace=False)
+        unlabeled_idx = np.where(self.labeled_idx==False)[0]        
         sampler = SubsetSequentialSampler(
             indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
         )
@@ -54,7 +53,7 @@ class BALD(Strategy):
         return probs, unlabeled_idx 
     
     def shannon_entropy_function(self,model, n_subset: int):
-        outputs,random_subset = self.extarct_unlabeled_prob(model,n_subset)
+        outputs,random_subset = self.extarct_unlabeled_prob(model, n_subset)
         pc = outputs.mean(axis=0)
         H = (-pc * np.log(pc + 1e-10)).sum(axis=-1)  # To avoid division with zero, add 1e-10
         E = -np.mean(np.sum(outputs * np.log(outputs + 1e-10), axis=-1), axis=0)
@@ -63,7 +62,7 @@ class BALD(Strategy):
     def query(self, model, n_subset: int = None) -> np.ndarray:
         
         # predict probability on unlabeled dataset
-        H,E_H,random_subset = self.shannon_entropy_function(model,n_subset)
+        H,E_H,random_subset = self.shannon_entropy_function(model, n_subset)
         
         # calculate mutual information 
         mutual_information = H - E_H 
