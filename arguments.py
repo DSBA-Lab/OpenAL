@@ -3,16 +3,57 @@ import argparse
 from datasets import stats
 
 def convert_type(value):
+    print(value)
+    print(type(value))
+    # None
     if value == 'None':
         return None
+    
+    # list or tuple
     elif len(value.split(',')) > 1:
         return value.split(',')
     
+    # bool
+    check, value = str_to_bool(value)
+    if check:
+        return value
+    
+    # float
+    check, value = str_to_float(value)
+    if check:
+        return value
+    
+    # int
+    check, value = str_to_int(value)
+    if check:
+        return value
+    
+    return value
+
+def str_to_bool(value):
     try:
         if isinstance(eval(value), bool):
-            return eval(value)
-    except:
-        return value
+            return True, eval(value)
+        else:
+            return False, value
+    except NameError:
+        return False, value
+    
+def str_to_float(value):
+    try:
+        if isinstance(float(value), float):
+            return True, float(value)
+        else:
+            False, value
+    except ValueError:
+        return False, value
+    
+def str_to_int(value):
+    try:
+        check = isinstance(int(value), int)
+        return True, int(value) if check else False, value
+    except ValueError:
+        return False, value
 
 def parser():
     parser = argparse.ArgumentParser(description='Active Learning - Benchmark')
