@@ -8,9 +8,9 @@ DATASET:
   test_batch_size: 32
   num_workers: 12
   aug_info:
-    - RandomCrop:
-        padding: 4
     - RandomHorizontalFlip
+    - RandomVerticalFlip
+    - Resize
 OPTIMIZER:
   opt_name: AdamW
   lr: 0.00001
@@ -27,7 +27,7 @@ TRAIN:
     entity: dsba-al-2023
     project_name: Active Learning - SamsungAL
 MODEL:
-  modelname: swin_base_patch4_window7_224_in22k
+  modelname: swin_base_patch4_window7_224.ms_in22k
   pretrained: true
 AL:
   n_start: 5000
