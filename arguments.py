@@ -3,8 +3,6 @@ import argparse
 from datasets import stats
 
 def convert_type(value):
-    print(value)
-    print(type(value))
     # None
     if value == 'None':
         return None
@@ -32,27 +30,26 @@ def convert_type(value):
 
 def str_to_bool(value):
     try:
-        if isinstance(eval(value), bool):
-            return True, eval(value)
-        else:
-            return False, value
+        check = isinstance(eval(value), bool)
+        out = [True, eval(value)] if check else [False, value]
+        return out
     except NameError:
         return False, value
     
 def str_to_float(value):
     try:
-        if isinstance(float(value), float):
-            return True, float(value)
-        else:
-            False, value
-    except ValueError:
+        check = isinstance(eval(value), float)
+        out = [True, eval(value)] if check else [False, value]
+        return out
+    except NameError:
         return False, value
     
 def str_to_int(value):
     try:
-        check = isinstance(int(value), int)
-        return True, int(value) if check else False, value
-    except ValueError:
+        check = isinstance(eval(value), int)
+        out = [True, eval(value)] if check else [False, value]
+        return out
+    except NameError:
         return False, value
 
 def parser():
