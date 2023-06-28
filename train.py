@@ -15,10 +15,9 @@ from accelerate import Accelerator
 from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, \
                             balanced_accuracy_score, classification_report, confusion_matrix, accuracy_score
 
-from query_strategies import create_query_strategy
+from query_strategies import create_query_strategy, create_labeled_index
 from models import create_model
 from utils import NoIndent, MyEncoder
-
 from omegaconf import OmegaConf
 
 _logger = logging.getLogger('train')
@@ -383,6 +382,7 @@ def full_run(
 def al_run(
     exp_name: str, modelname: str, pretrained: bool,
     strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, 
+    init_method: str, init_method_params: dict,
     trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
     opt_name: str, lr: float, opt_params: dict,
@@ -403,11 +403,13 @@ def al_run(
         len(trainset), n_start, n_query, n_end, nb_round))
     
     # inital sampling labeling
-    sample_idx = np.arange(len(trainset))
-    np.random.shuffle(sample_idx)
-    
-    labeled_idx = np.zeros_like(sample_idx, dtype=bool)
-    labeled_idx[sample_idx[:n_start]] = True
+    labeled_idx = create_labeled_index(
+        method   = init_method,
+        trainset = trainset,
+        size     = n_start,
+        seed     = seed,
+        **init_method_params
+    )
     
     # select strategy    
     strategy = create_query_strategy(
