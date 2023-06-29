@@ -87,23 +87,22 @@ class PadWithKeepRatio(object):
         return self.__class__.__name__ + '(fill={0}, padding_mode={1})'.\
             format(self.fill, self.padding_mode)
             
-
-'''
-Example : 
-transform = transforms.Compose([
-    CLAHE(),
-    transforms.ToTensor()
-])
-
-'''            
             
 
 class CLAHE(nn.Module):
-    def __init__(self, clipLimit=2.0, tileGridSize=(8,8)):
+    '''
+    Example : 
+    transform = transforms.Compose([
+        CLAHE(),
+        transforms.ToTensor()
+    ])
+
+    '''            
+    def __init__(self, clipLimit: float = 2.0, tileGridSize: tuple = (8,8)):
         super(CLAHE,self).__init__()
         self.clahe = cv2.createCLAHE(clipLimit = clipLimit, tileGridSize = tileGridSize)
         
-    def forward(self,img):
+    def forward(self,img: np.ndarray or Image.Image):
         if isinstance(img, Image.Image):
             img = np.array(img)
         elif isinstance(img, torch.Tensor):
@@ -123,7 +122,7 @@ class EqualizeHist(nn.Module):
         super(EqualizeHist,self).__init__()
         self.equalize_hist = cv2.equalizeHist
         
-    def forward(self,img):
+    def forward(self,img: np.ndarray or Image.Image):
         if isinstance(img, Image.Image):
             img = np.array(img)
         elif type(img) == torch.Tensor:
