@@ -82,3 +82,41 @@ class PadWithKeepRatio(object):
     def __repr__(self):
         return self.__class__.__name__ + '(fill={0}, padding_mode={1})'.\
             format(self.fill, self.padding_mode)
+            
+            
+            
+
+import cv2 
+import PIL 
+from PIL import Image 
+import numpy as np 
+import torch 
+import torch.nn as nn 
+
+class CLAHE(nn.Module):
+    def __init__(self, clipLimit=2.0, tileGridSize=(8,8)):
+        super(CLAHE,self).__init__()
+        self.clahe = cv2.createCLAHE(clipLimit = clipLimit, tileGridSize = tileGridSize)
+        
+    def forward(self,img):
+        if type(img) == PIL.PngImagePlugin.PngImageFile:
+            img = np.array(img)
+        elif type(img) == torch.Tensor:
+            raise TypeError            
+        img = self.clahe.apply(img)
+        
+        return Image.fromarray(img)
+
+class EqualizeHist(nn.Module):
+    def __init__(self):
+        super(EqualizeHist,self).__init__()
+        self.equalize_hist = cv2.equalizeHist
+        
+    def forward(self,img):
+        if type(img) == PIL.PngImagePlugin.PngImageFile:
+            img = np.array(img)
+        elif type(img) == torch.Tensor:
+            raise TypeError            
+        img = self.equalize_hist(img,)
+        
+        return Image.fromarray(img)            
