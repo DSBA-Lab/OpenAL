@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 import cv2 
-import PIL 
+from PIL import Image 
 import torch.nn as nn 
 
 from torchvision import transforms
@@ -104,11 +104,17 @@ class CLAHE(nn.Module):
         self.clahe = cv2.createCLAHE(clipLimit = clipLimit, tileGridSize = tileGridSize)
         
     def forward(self,img):
-        if type(img) == PIL.PngImagePlugin.PngImageFile:
+        if isinstance(img, Image.Image):
             img = np.array(img)
-        elif type(img) == torch.Tensor:
+        elif isinstance(img, torch.Tensor):
             raise TypeError            
-        img = self.clahe.apply(img)
+        
+        if len(img.shape) == 2 or img.shape[2] == 1:
+                img = self.clahe.apply(img)
+        else:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+            img[:, :, 0] = self.clahe.apply(img[:, :, 0])
+            img = cv2.cvtColor(img, cv2.COLOR_LAB2RGB)
         
         return img
 
@@ -118,10 +124,18 @@ class EqualizeHist(nn.Module):
         self.equalize_hist = cv2.equalizeHist
         
     def forward(self,img):
-        if type(img) == PIL.PngImagePlugin.PngImageFile:
+        if isinstance(img, Image.Image):
             img = np.array(img)
         elif type(img) == torch.Tensor:
             raise TypeError            
-        img = self.equalize_hist(img,)
         
+        if len(img.shape) == 2 or img.shape[2] == 1:
+                img = self.equalize_hist(img)
+        else:
+            src_ycrcb = cv2.cvtColor(img, cv2.COLOR_RGB2YCR_CB)
+            ycrcb_planes = list(cv2.split(src_ycrcb))
+            ycrcb_planes[0] = cv2.equalizeHist(ycrcb_planes[0])
+            dst_ycrcb = cv2.merge(ycrcb_planes)
+            img = cv2.cvtColor(dst_ycrcb, cv2.COLOR_YCrCb2BGR)
+                
         return img
