@@ -3,6 +3,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+import cv2 
+import PIL 
+import torch.nn as nn 
+
 from torchvision import transforms
 
 def add_augmentation(transform: transforms.Compose, img_size: int, aug_info: list = None):
@@ -83,15 +87,16 @@ class PadWithKeepRatio(object):
         return self.__class__.__name__ + '(fill={0}, padding_mode={1})'.\
             format(self.fill, self.padding_mode)
             
-            
-            
 
-import cv2 
-import PIL 
-from PIL import Image 
-import numpy as np 
-import torch 
-import torch.nn as nn 
+'''
+Example : 
+transform = transforms.Compose([
+    CLAHE(),
+    transforms.ToTensor()
+])
+
+'''            
+            
 
 class CLAHE(nn.Module):
     def __init__(self, clipLimit=2.0, tileGridSize=(8,8)):
@@ -105,7 +110,7 @@ class CLAHE(nn.Module):
             raise TypeError            
         img = self.clahe.apply(img)
         
-        return Image.fromarray(img)
+        return img
 
 class EqualizeHist(nn.Module):
     def __init__(self):
@@ -119,4 +124,4 @@ class EqualizeHist(nn.Module):
             raise TypeError            
         img = self.equalize_hist(img,)
         
-        return Image.fromarray(img)            
+        return img
