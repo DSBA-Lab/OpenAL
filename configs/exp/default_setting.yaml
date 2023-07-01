@@ -34,3 +34,5 @@ AL:
   n_query: 20
   n_end: 6000
   n_subset: null
+  init:
+    method: random_select
