@@ -1,6 +1,6 @@
 DEFAULT:
   seed: 0
-  savedir: ./results/exp
+  savedir: ./results/
 DATASET:
   datadir: /datasets
   dataname: SamsungAL
@@ -17,7 +17,7 @@ OPTIMIZER:
   params:
     weight_decay: 0.00001
 TRAIN:
-  epochs: 20
+  epochs: 30
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
