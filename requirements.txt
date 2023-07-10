@@ -1,5 +1,5 @@
-accelerate
+accelerate==0.18.0
 wandb
-torchvision
-gradio
+torchvision==0.15.0a0
+gradio==3.27.0
 omegaconf
