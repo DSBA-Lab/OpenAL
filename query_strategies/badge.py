@@ -13,6 +13,7 @@ from .strategy import Strategy,SubsetSequentialSampler
 class BADGE(Strategy):
     '''
     사용하는 데이터(데이터셋)에 따라 일부 코드 수정 필요 
+    현재 코드 Samsung 데이터에 맞춰져 있음 
     수정 대상 : emBDim, nLab 
     '''
     def __init__(
