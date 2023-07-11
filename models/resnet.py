@@ -93,18 +93,25 @@ class ResNet(nn.Module):
             layers.append(block(self.in_planes, planes, stride))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
-
-    def forward(self, x):
+    
+    def forward_features(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         out = self.layer2(out)
         out = self.layer3(out)
         out = self.layer4(out)
+        return out 
+    
+    def forward_head(self, x):
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         if self.drop_rate:
             x = F.dropout(x, p=float(self.drop_rate), training=self.training)
         out = self.linear(out)
+
+    def forward(self, x):
+        out = self.forward_features(x)
+        out = self.forward_head(out)
         return out
 
 
