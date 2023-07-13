@@ -15,7 +15,9 @@ def add_augmentation(transform: transforms.Compose, img_size: int, aug_info: lis
         'RandomHorizontalFlip': transforms.RandomHorizontalFlip(),
         'RandomVerticalFlip': transforms.RandomVerticalFlip(),
         'Resize': transforms.Resize((img_size, img_size)),
-        'PadWithKeepRatio': PadWithKeepRatio(padding_mode='reflect')
+        'PadWithKeepRatio': PadWithKeepRatio(padding_mode='reflect'),
+        'CLAHE': CLAHE(),
+        'EqualizeHist': EqualizeHist(),
     }
     # insert augmentations
     if aug_info != None:    
@@ -89,20 +91,13 @@ class PadWithKeepRatio(object):
             
             
 
-class CLAHE(nn.Module):
-    '''
-    Example : 
-    transform = transforms.Compose([
-        CLAHE(),
-        transforms.ToTensor()
-    ])
-
-    '''            
-    def __init__(self, clipLimit: float = 2.0, tileGridSize: tuple = (8,8)):
+class CLAHE(nn.Module):        
+    def __init__(self, clipLimit: float = 2.0, tileGridSize: tuple = (8,8), p: float = 0.5):
         super(CLAHE,self).__init__()
         self.clahe = cv2.createCLAHE(clipLimit = clipLimit, tileGridSize = tileGridSize)
+        self.p = p
         
-    def forward(self,img: np.ndarray or Image.Image):
+    def transform(self, img: np.ndarray or Image.Image):
         if isinstance(img, Image.Image):
             img = np.array(img)
         elif isinstance(img, torch.Tensor):
@@ -115,14 +110,19 @@ class CLAHE(nn.Module):
             img[:, :, 0] = self.clahe.apply(img[:, :, 0])
             img = cv2.cvtColor(img, cv2.COLOR_LAB2RGB)
         
+    def forward(self, img: np.ndarray or Image.Image):
+        if np.random.random() < self.p:
+            img = self.transform(img)
+        
         return img
 
 class EqualizeHist(nn.Module):
-    def __init__(self):
-        super(EqualizeHist,self).__init__()
+    def __init__(self, p: float = 0.5):
+        super(EqualizeHist, self).__init__()
         self.equalize_hist = cv2.equalizeHist
+        self.p = p
         
-    def forward(self,img: np.ndarray or Image.Image):
+    def transform(self, img: np.ndarray or Image.Image):
         if isinstance(img, Image.Image):
             img = np.array(img)
         elif type(img) == torch.Tensor:
@@ -137,4 +137,10 @@ class EqualizeHist(nn.Module):
             dst_ycrcb = cv2.merge(ycrcb_planes)
             img = cv2.cvtColor(dst_ycrcb, cv2.COLOR_YCrCb2BGR)
                 
+        return img
+    
+    def forward(self, img: np.ndarray or Image.Image):
+        if np.random.random() < self.p:
+            img = self.transform(img)
+            
         return img
