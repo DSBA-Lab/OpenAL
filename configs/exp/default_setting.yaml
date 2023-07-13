@@ -4,6 +4,7 @@ DEFAULT:
 DATASET:
   datadir: /datasets
   dataname: SamsungAL
+  seed: 42
   batch_size: 32
   test_batch_size: 32
   num_workers: 12

@@ -76,20 +76,22 @@ def load_tiny_imagenet_200(datadir: str, img_size: int, mean: tuple, std: tuple,
     return trainset, testset
     
 
-def create_dataset(datadir: str, dataname: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
+def create_dataset(
+    datadir: str, dataname: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, seed: int = 42
+):
     trainset = ALDataset(
         datadir   = os.path.join(datadir,dataname),
-        name      = 'train.csv',
+        name      = f'train_seed{seed}.csv',
         transform = train_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
     )
     validset = ALDataset(
         datadir   = os.path.join(datadir,dataname), 
-        name      = 'validation.csv',
+        name      = f'validation_seed{seed}.csv',
         transform = test_augmentation(img_size=img_size, mean=mean, std=std)
     )
     testset = ALDataset(
         datadir   = os.path.join(datadir,dataname), 
-        name      = 'test.csv',
+        name      = f'test_seed{seed}.csv',
         transform = test_augmentation(img_size=img_size, mean=mean, std=std)
     )
     
