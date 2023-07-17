@@ -103,11 +103,12 @@ class ResNet(nn.Module):
         return out 
     
     def forward_head(self, x):
-        out = F.avg_pool2d(out, 4)
+        out = F.avg_pool2d(x, 4)
         out = out.view(out.size(0), -1)
         if self.drop_rate:
             x = F.dropout(x, p=float(self.drop_rate), training=self.training)
         out = self.linear(out)
+        return out 
 
     def forward(self, x):
         out = self.forward_features(x)
