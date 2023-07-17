@@ -18,7 +18,7 @@ OPTIMIZER:
   params:
     weight_decay: 0.00001
 TRAIN:
-  epochs: 60
+  epochs: 100
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
