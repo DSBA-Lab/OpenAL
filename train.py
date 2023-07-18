@@ -433,7 +433,10 @@ def al_run(
     
     
     # define log dataframe
-    log_df = pd.DataFrame(
+    log_df_valid = pd.DataFrame(
+        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+    )
+    log_df_test = pd.DataFrame(
         columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
     )
     
@@ -525,7 +528,47 @@ def al_run(
         if validset != testset:
             model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
 
+        
+        # ====================
+        # validation results
+        # ====================
+        
+        eval_results = test(
+            model            = model, 
+            dataloader       = validloader, 
+            criterion        = strategy.loss_fn, 
+            log_interval     = log_interval,
+            return_per_class = True,
+            name             = 'VALID'
+        )
+
+        # save results per class
+        metrics_log.update({
+            f'round{r}': eval_results['per_class']
+        })
+        json.dump(
+            obj    = metrics_log, 
+            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{seed}_best-per_class.json"), 'w'), 
+            cls    = MyEncoder,
+            indent = '\t'
+        )
+        
+        del eval_results['per_class']
+        
+        # save results 
+        log_metrics = {'round':r}
+        log_metrics.update([(k, v) for k, v in eval_results.items()])
+        log_df_valid = log_df_valid.append(log_metrics, ignore_index=True)
+        
+        log_df_valid.round(4).to_csv(
+            os.path.join(savedir, f"round{nb_round}-seed{seed}_best.csv"),
+            index=False
+        )   
+
+        # ====================
         # test results
+        # ====================
+        
         test_results = test(
             model            = model, 
             dataloader       = testloader, 
@@ -550,14 +593,14 @@ def al_run(
         # save results 
         log_metrics = {'round':r}
         log_metrics.update([(k, v) for k, v in test_results.items()])
-        log_df = log_df.append(log_metrics, ignore_index=True)
+        log_df_test = log_df_test.append(log_metrics, ignore_index=True)
         
-        log_df.round(4).to_csv(
+        log_df_test.round(4).to_csv(
             os.path.join(savedir, f"round{nb_round}-seed{seed}.csv"),
             index=False
         )   
         
         
-        _logger.info('append result [shape: {}]'.format(log_df.shape))
+        _logger.info('append result [shape: {}]'.format(log_df_test.shape))
         
         wandb.finish()
