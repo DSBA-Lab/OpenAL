@@ -446,7 +446,8 @@ def al_run(
     query_log_df.loc[labeled_idx, 'query_round'] = 'round0'
     
     # define dict to save confusion matrix and metrics per class
-    metrics_log = {}
+    metrics_log_eval = {}
+    metrics_log_test = {}
     
     # run
     for r in range(nb_round+1):
@@ -543,11 +544,11 @@ def al_run(
         )
 
         # save results per class
-        metrics_log.update({
+        metrics_log_eval.update({
             f'round{r}': eval_results['per_class']
         })
         json.dump(
-            obj    = metrics_log, 
+            obj    = metrics_log_eval, 
             fp     = open(os.path.join(savedir, f"round{nb_round}-seed{seed}_best-per_class.json"), 'w'), 
             cls    = MyEncoder,
             indent = '\t'
@@ -578,11 +579,11 @@ def al_run(
         )
 
         # save results per class
-        metrics_log.update({
+        metrics_log_test.update({
             f'round{r}': test_results['per_class']
         })
         json.dump(
-            obj    = metrics_log, 
+            obj    = metrics_log_test, 
             fp     = open(os.path.join(savedir, f"round{nb_round}-seed{seed}-per_class.json"), 'w'), 
             cls    = MyEncoder,
             indent = '\t'
