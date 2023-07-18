@@ -4,8 +4,9 @@ DEFAULT:
 DATASET:
   datadir: /datasets
   dataname: SamsungAL
-  batch_size: 32
-  test_batch_size: 32
+  seed: 42
+  batch_size: 128
+  test_batch_size: 128
   num_workers: 12
   aug_info:
     - RandomHorizontalFlip
@@ -17,7 +18,7 @@ OPTIMIZER:
   params:
     weight_decay: 0.00001
 TRAIN:
-  epochs: 30
+  epochs: 100
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
@@ -35,4 +36,4 @@ AL:
   n_end: 6000
   n_subset: null
   init:
-    method: random_select
+    method: stratified_random_select
