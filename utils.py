@@ -227,6 +227,36 @@ def extract_al_results(
     Returns:
     - total_round (int): total round for active learning
     - r (dict): active learning results data frame by strategies
+    
+    =============
+    
+    Example:
+    
+    al_list = [
+        'RandomSampling',
+        'EntropySampling',
+        'MarginSampling',
+        'LeastConfidence',
+    ]
+    seed_list = [0]
+    savedir = './results/SamsungAL'
+    model = 'swin_base_patch4_window7_224.ms_in22k'
+    n_start = 5000
+    n_query = 20
+    n_end = 6000
+
+    # get results
+    total_round, r = extract_al_results(
+        savedir    = savedir,
+        strategies = strategies,
+        seed_list  = seed_list,
+        model      = model,
+        n_start    = n_start,
+        n_query    = n_query,
+        n_end      = n_end,
+        test       = test,
+        binary     = binary
+    )
     """
     
     # total round
@@ -309,6 +339,31 @@ def extract_full_results(
     
     Return:
     - r_full (dict): full images supervised learning results
+    
+    =============
+    
+    Example:
+    
+    fullname_list = [
+        'Full-hflip_vflip',
+        'Full-hflip_vflip_d-seed43',
+        'Full-hflip_vflip_d-seed44',
+        'Full-hflip_vflip_d-seed45',
+        'Full-hflip_vflip_d-seed46',
+    ]
+    seed_list = [0]
+    savedir = './results/SamsungAL'
+    model = 'swin_base_patch4_window7_224.ms_in22k'
+
+    # get full supervised learning results
+    r_full = extract_full_results(
+        savedir       = savedir,
+        fullname_list = fullname_list,
+        seed_list     = seed_list,
+        model         = model,
+        test          = True,
+        binary        = False
+    )
     """
     
     # get full supervised learning results
@@ -370,6 +425,44 @@ def comparison_strategy(
     
     Return:
     - r (dict): active learning results data frame by strategies
+    
+    =============
+    
+    Example:
+    
+    al_list = [
+        'RandomSampling',
+        'EntropySampling',
+        'MarginSampling',
+        'LeastConfidence',
+    ]
+    seed_list = [0]
+    savedir = './results/SamsungAL'
+    fullname_list = [
+        'Full-hflip_vflip',
+        'Full-hflip_vflip_d-seed43',
+        'Full-hflip_vflip_d-seed44',
+        'Full-hflip_vflip_d-seed45',
+        'Full-hflip_vflip_d-seed46',
+    ]
+    model = 'swin_base_patch4_window7_224.ms_in22k'
+    n_start = 5000
+    n_query = 20
+    n_end = 6000
+
+    results = comparison_strategy(
+        savedir       = savedir,
+        strategies    = al_list,
+        fullname_list = fullname_list,
+        seed_list     = seed_list,
+        model         = model,
+        n_start       = n_start,
+        n_query       = n_query,
+        n_end         = n_end,
+        test          = True,
+        binary        = False,
+        figsize       = (17,8)
+    )
     """
 
     # get results
@@ -484,6 +577,15 @@ def comparison_aubc(results: dict) -> pd.DataFrame:
     
     Return:
     - table (pd.DataFrame): AUBC and last metric score by strategies
+    
+    =============
+    
+    Example:
+    
+    # results is output from extract_al_results function
+    
+    table = comparison_aubc(results)
+    table.round(4)
     """
     # define metric for AUBC
     metrics = list(results.values())[0].columns.tolist()
@@ -524,6 +626,34 @@ def query_frequency(
     Output:
     - 1. bar-plot using frequency per class of intital dataset
     - 2. bar-plot using query frequency per class for active learning outcomes
+    
+    =============
+    
+    Example:
+    
+    seed = 0
+    savedir = './results/SamsungAL'
+    train_path = '/datasets/SamsungAL/train_seed42.csv'
+    model = 'swin_base_patch4_window7_224.ms_in22k'
+    n_start = 5000
+    n_query = 20
+    n_end = 6000
+    
+    # table is output from comparison_aubc function
+    
+    best_metric = 'AUBC F1'
+    best_strategy = table.loc[table[best_metric].idxmax()].strategy
+    
+    query_frequency(
+        strategy   = best_strategy,
+        train_path = train_path,
+        savedir    = savedir,
+        model      = model,
+        n_end      = n_end,
+        n_query    = n_query,
+        n_start    = n_start,
+        seed       = seed
+    )
     """
     
     p = os.path.join(
@@ -602,6 +732,32 @@ def comparison_per_class(
     
     Output:
     - line-plots using scores of metrics per round
+    
+    =============
+    
+    Example:
+    
+    seed_list = [0]
+    savedir = './results/SamsungAL'
+    model = 'swin_base_patch4_window7_224.ms_in22k'
+    n_start = 5000
+    n_query = 20
+    n_end = 6000
+    
+    # table is output from comparison_aubc function
+    
+    best_metric = 'AUBC F1'
+    best_strategy = table.loc[table[best_metric].idxmax()].strategy
+    
+    comparison_per_class(
+        savedir   = savedir, 
+        model     = model, 
+        strategy  = best_strategy, 
+        n_start   = n_start, 
+        n_query   = n_query, 
+        n_end     = n_end, 
+        seed_list = seed_list
+    )
     """
     
     # total round
