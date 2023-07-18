@@ -74,7 +74,7 @@ class ResNet(nn.Module):
         self.multiply = (img_size // 32) ** 2
         
         self.in_planes = 64
-
+        self.num_features = 512*block.expansion
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
@@ -82,7 +82,7 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.linear = nn.Linear(512*block.expansion*self.multiply, num_classes)
+        self.linear = nn.Linear(self.num_features*self.multiply, num_classes)
         
         self.drop_rate = drop_rate
 
