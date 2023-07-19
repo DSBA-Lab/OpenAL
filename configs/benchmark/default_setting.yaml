@@ -7,8 +7,7 @@ DATASET:
   test_batch_size: 2048
   num_workers: 12
   aug_info:
-    - RandomCrop:
-        padding: 4
+    - RandomCrop
     - RandomHorizontalFlip
 OPTIMIZER:
   opt_name: SGD
@@ -30,3 +29,5 @@ AL:
   n_query: 500
   n_end: 10000
   n_subset: null
+  init:
+    method: random_select
