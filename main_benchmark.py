@@ -56,39 +56,47 @@ def run(cfg):
         savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, cfg.DEFAULT.exp_name, al_name, f'seed{cfg.DEFAULT.seed}')
         os.makedirs(savedir, exist_ok=True)
         
+        # save config
+        OmegaConf.save(cfg, os.path.join(savedir, 'configs.yaml'))
+        
         # run active learning
         al_run(
-            exp_name        = cfg.DEFAULT.exp_name, 
-            modelname       = cfg.MODEL.modelname,
-            pretrained      = cfg.MODEL.pretrained,
-            strategy        = cfg.AL.strategy,
-            n_start         = cfg.AL.n_start,
-            n_end           = cfg.AL.n_end,
-            n_query         = cfg.AL.n_query,
-            n_subset        = cfg.AL.n_subset,
-            trainset        = trainset,
-            validset        = testset,
-            testset         = testset,
-            img_size        = cfg.DATASET.img_size,
-            num_classes     = cfg.DATASET.num_classes,
-            batch_size      = cfg.DATASET.batch_size,
-            test_batch_size = cfg.DATASET.test_batch_size,
-            num_workers     = cfg.DATASET.num_workers,
-            opt_name        = cfg.OPTIMIZER.opt_name,
-            lr              = cfg.OPTIMIZER.lr,
-            opt_params      = cfg.OPTIMIZER.get('params',{}),
-            epochs          = cfg.TRAIN.epochs,
-            log_interval    = cfg.TRAIN.log_interval,
-            use_wandb       = cfg.TRAIN.wandb.use,
-            savedir         = savedir,
-            seed            = cfg.DEFAULT.seed,
-            accelerator     = accelerator,
-            cfg             = cfg
+            exp_name           = cfg.DEFAULT.exp_name, 
+            modelname          = cfg.MODEL.modelname,
+            pretrained         = cfg.MODEL.pretrained,
+            strategy           = cfg.AL.strategy,
+            n_start            = cfg.AL.n_start,
+            n_end              = cfg.AL.n_end,
+            n_query            = cfg.AL.n_query,
+            n_subset           = cfg.AL.n_subset,
+            init_method        = cfg.AL.init.method,
+            init_method_params = cfg.AL.init.get('params', {}),
+            trainset           = trainset,
+            validset           = testset,
+            testset            = testset,
+            img_size           = cfg.DATASET.img_size,
+            num_classes        = cfg.DATASET.num_classes,
+            batch_size         = cfg.DATASET.batch_size,
+            test_batch_size    = cfg.DATASET.test_batch_size,
+            num_workers        = cfg.DATASET.num_workers,
+            opt_name           = cfg.OPTIMIZER.opt_name,
+            lr                 = cfg.OPTIMIZER.lr,
+            opt_params         = cfg.OPTIMIZER.get('params',{}),
+            epochs             = cfg.TRAIN.epochs,
+            log_interval       = cfg.TRAIN.log_interval,
+            use_wandb          = cfg.TRAIN.wandb.use,
+            savedir            = savedir,
+            seed               = cfg.DEFAULT.seed,
+            accelerator        = accelerator,
+            cfg                = cfg
         )
     else:
         # make save directory
         savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, cfg.DEFAULT.exp_name)
         os.makedirs(savedir, exist_ok=True)
+        
+        # save configs
+        OmegaConf.save(cfg, os.path.join(savedir, 'configs.yaml'))
         
         # initialize wandb
         if cfg.TRAIN.wandb.use:
