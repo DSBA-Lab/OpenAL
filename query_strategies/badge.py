@@ -39,7 +39,8 @@ class BADGE(Strategy):
             num_workers = self.num_workers
         )
         
-        embDim = model.num_features
+        # Prepare to get gradient embedding 
+        embDim = model.num_features # number of features of embedding 
         device = next(model.parameters()).device 
         nLab = len(dataloader.dataset.label_info['label'].unique()) # number of Label : 4 
         embedding = np.zeros([len(sampler), embDim * nLab]) # Empty Tensor 
@@ -61,9 +62,9 @@ class BADGE(Strategy):
                 for j in range(len(y)):
                     for c in range(nLab):
                         if c == maxInds[j]:
-                            embedding[idxs[j]][embDim * c : embDim * (c+1)] = deepcopy(emb[j]) * (1 - batchprobs[j][c]) # gradient embedding = (p-I(y=i)) * z(x;V); p=1, z(x;V)=emb
+                            embedding[idxs[j]][embDim * c : embDim * (c+1)] = deepcopy(emb[j]) * (1 - batchprobs[j][c])  # gradient embedding : differentiation of CrossEntropy = (p-I(y=i)) * z(x;V); p=1, z(x;V)=emb
                         else:
-                            embedding[idxs[j]][embDim * c : embDim * (c+1)] = deepcopy(emb[j]) * (-1 * batchprobs[j][c]) # gradient embedding = (p-I(y=1)) * z(x;V); p=0, z(x;V)=emb
+                            embedding[idxs[j]][embDim * c : embDim * (c+1)] = deepcopy(emb[j]) * (-1 * batchprobs[j][c]) # gradient embedding : differentiation of CrossEntropy = (p-I(y=i)) * z(x;V); p=0, z(x;V)=emb
             return torch.Tensor(embedding)
 
     def query(self, model, n_subset: int = None) -> np.ndarray:
