@@ -103,7 +103,7 @@ class ResNet(nn.Module):
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         if self.drop_rate:
-            x = F.dropout(x, p=float(self.drop_rate), training=self.training)
+            out = F.dropout(out, p=float(self.drop_rate), training=self.training)
         out = self.linear(out)
         return out
 
