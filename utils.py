@@ -608,7 +608,7 @@ def comparison_aubc(results: dict) -> pd.DataFrame:
 
 def query_frequency(
     strategy: str, train_path: str, savedir: str, model: str, 
-    n_start: int, n_query: int, n_end: int, seed: int
+    n_start: int, n_query: int, n_end: int, seed: int, figsize: tuple = (10,3)
 ):
     """
     Query frequency per class
@@ -673,7 +673,7 @@ def query_frequency(
     # calculate class frequency per round
     df_round = df.groupby(['label','query_round']).idx.count().reset_index()
 
-    fig, ax = plt.subplots(1,2,figsize=(10,3))
+    fig, ax = plt.subplots(1,2,figsize=figsize)
 
     # init frequency
     df_init = df_round[df_round.query_round=='round0']
