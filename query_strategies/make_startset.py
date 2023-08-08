@@ -2,6 +2,9 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from torch.utils.data import Dataset
 
+import os
+import pandas as pd
+
 
 def create_labeled_index(method: str, trainset: Dataset, size: int, seed: int, **kwargs):
     '''
@@ -70,3 +73,30 @@ def stratified_random_select(sample_idx: list, size: int, seed: int, stratify: l
     
     return select_idx
     
+    
+def pt4al_select(size: int, **kwargs):
+    '''
+    Args:
+    - size (int): represents the absolute number of train samples. 
+    - save_path (str): pt4al batch loss path.
+    - sampling_interval (int): uniform sampling interval.
+    
+    Return:
+    - selecte_idx (list): selected indice.
+    '''
+    
+    ## load ssl pretext batch
+    ssl_batch_path = os.path.join(kwargs['save_path'], 'batch', 'batch_loss.txt')
+    
+    with open(ssl_batch_path, 'r') as f:
+        samples = f.readlines()
+    
+    ## first bach uniform sampling
+    samples = np.array(samples)
+    if 'CIFAR10' in kwargs['save_path']:
+        selecte_idx = samples[[j*kwargs['sampling_interval'] for j in range(size)]]
+    elif 'SamsungAL' in kwargs['save_path']:
+        selecte_idx = samples[:size]
+    selecte_idx = list(map(int, pd.DataFrame(selecte_idx)[0].str.replace('\n', '')))
+    
+    return selecte_idx
