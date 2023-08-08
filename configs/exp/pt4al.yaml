@@ -1,0 +1,11 @@
+AL:
+  strategy: PT4AL
+  params:
+    save_path: ./ssl_pretext/SamsungAL
+    round: 50
+    n_init: 5000
+  init:
+    method: pt4al_select
+    params:
+      save_path: ./ssl_pretext/SamsungAL
+      sampling_interval: 1
