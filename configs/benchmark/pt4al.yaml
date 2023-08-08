@@ -1,0 +1,11 @@
+AL:
+  strategy: PT4AL
+  params:
+    save_path: ./ssl_pretext/CIFAR10
+    round: 10 
+    n_init: 1000
+  init:
+    method: pt4al_select
+    params:
+      save_path: ./ssl_pretext/CIFAR10
+      sampling_interval: 5
