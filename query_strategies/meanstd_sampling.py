@@ -36,7 +36,7 @@ class MeanSTDSampling(Strategy):
             batch_size  = self.batch_size,
             sampler     = sampler,
             num_workers = self.num_workers
-        )
+        ) 
         
         # predict
         device = next(model.parameters()).device
