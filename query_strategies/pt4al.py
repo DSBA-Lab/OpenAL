@@ -38,11 +38,10 @@ class PT4AL(Strategy):
             samples = f.readlines()
         
         # pt4al batch indexing
-        query_samples = samples[:len(samples)-self.n_init]
-        query_samples_len = len(query_samples)
-        query_samples[query_samples_len//self.round * (self.cycle-1) : query_samples_len//self.round * (self.cycle)]
+        batch_sample = samples[self.n_init + len(samples)//self.round * (self.cycle-1) : self.n_init + len(samples)//self.round * (self.cycle)]
+  
             
-        batch_idx = list(map(int, pd.DataFrame(query_samples)[0].str.replace('\n', '')))
+        batch_idx = list(map(int, pd.DataFrame(batch_sample)[0].str.replace('\n', '')))
         
         sampler = SubsetSequentialSampler(
             indices = self.subset_sampling(indices=batch_idx, n_subset=n_subset) if n_subset else batch_idx
