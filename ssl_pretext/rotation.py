@@ -4,12 +4,12 @@ sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
 from datasets import load_cifar10, create_dataset, stats
 from models import create_model
-from utils_pt4al import RotationDataset
+from datasets import RotationDataset
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from utils_pt4al.utils import progress_bar
+from ssl_pretext.utils import progress_bar
 import torch.backends.cudnn as cudnn
 
 import numpy as np
