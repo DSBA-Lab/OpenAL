@@ -29,11 +29,8 @@ torchvision
 - Entropy Sampling
 - Learning Loss for Active Leanring
 - BALD
+- Badge
+- MeanSTD
+- VarRatio
 - Feature Mixing
-
-
-# TODO
-
-- [ ] PT4AL
-- [ ] k-center greedy
 
