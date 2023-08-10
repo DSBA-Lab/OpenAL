@@ -5,7 +5,7 @@ import random
 
 
 class RotationDataset(Dataset):
-    def __init__(self, dataset, is_train=True):
+    def __init__(self, dataset: Dataset, is_train: bool = True):
         self.dataset = dataset
         self.is_train = is_train
         self.rotations = [0,1,2,3]
