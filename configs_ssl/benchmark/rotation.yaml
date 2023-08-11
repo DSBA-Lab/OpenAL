@@ -1,0 +1,28 @@
+DEFAULT:
+  seed: 0
+  savedir: ./results/batch/rotation
+  exp_name: default
+DATASET:
+  datadir: /datasets
+  batch_size: 1024
+  test_batch_size: 256
+  num_workers: 12
+  aug_info: null
+OPTIMIZER:
+  opt_name: SGD
+  lr: 0.1
+  params:
+    momentum: 0.9
+    weight_decay: 5e-4
+TRAIN:
+  epochs: 15
+  grad_accum_steps: 1
+  mixed_precision: fp16
+  log_interval: 10
+  wandb:
+    use: true
+    entity: dsba-al-2023
+    project_name: Active Learning - Benchmark (SSL)
+MODEL:
+  modelname: resnet18
+  pretrained: false
