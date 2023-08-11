@@ -3,7 +3,6 @@ import torch
 
 import random
 
-
 class RotationDataset(Dataset):
     def __init__(self, dataset: Dataset, is_train: bool = True):
         super().__init__()

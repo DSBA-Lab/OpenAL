@@ -14,8 +14,8 @@ from train import fit
 from datasets import create_dataset
 from models import create_model
 from log import setup_default_logging
-from ssl_pretext.datasets import RotationDataset
-from ssl_pretext.arguments import parser
+from arguments import parser_ssl
+from ssl_pretext.rotation import RotationDataset
 
 _logger = logging.getLogger('train')
 
@@ -186,6 +186,6 @@ def run(cfg):
         
 if __name__ == "__main__":
     # config
-    cfg = parser()
+    cfg = parser_ssl()
     # run(cfg)
     
