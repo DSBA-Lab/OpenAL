@@ -20,10 +20,11 @@ TRAIN:
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
+  ckp_metric: acc
   wandb:
     use: true
     entity: dsba-al-2023
-    project_name: Active Learning - Benchmark (SSL)
+    project_name: Active Learning - SamsungAL (SSL rotation)
 MODEL:
   modelname: swin_base_patch4_window7_224.ms_in22k
   pretrained: true
