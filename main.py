@@ -1,32 +1,17 @@
-import numpy as np
 import os
-import random
 import wandb
-import torch
 import logging
 from arguments import parser
 
 from train import al_run, full_run
 from datasets import create_dataset
 from log import setup_default_logging
+from utils import torch_seed
 
 from accelerate import Accelerator
 from omegaconf import OmegaConf
 
 _logger = logging.getLogger('train')
-
-def torch_seed(random_seed):
-    torch.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    torch.cuda.manual_seed_all(random_seed) # if use multi-GPU 
-    # CUDA randomness
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    
-    np.random.seed(random_seed)
-    random.seed(random_seed)
-    os.environ['PYTHONHASHSEED'] = str(random_seed)
-
 
 def run(cfg):
 
