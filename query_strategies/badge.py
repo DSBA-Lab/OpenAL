@@ -24,12 +24,9 @@ class BADGE(Strategy):
             num_workers = num_workers
         )            
         
-    def get_grad_embedding(self, model, n_subset: int = None) -> torch.Tensor:
+    def get_grad_embedding(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:
         # define sampler
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]
-        sampler = SubsetSequentialSampler(
-            indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
-        )
+        sampler = SubsetSequentialSampler(indices=unlabeled_idx)
         
         # unlabeled dataloader
         dataloader = DataLoader(
@@ -67,11 +64,14 @@ class BADGE(Strategy):
                             embedding[idxs[j]][embDim * c : embDim * (c+1)] = deepcopy(emb[j]) * (-1 * batchprobs[j][c]) # gradient embedding : differentiation of CrossEntropy = (p-I(y=i)) * z(x;V); p=0, z(x;V)=emb
             return torch.Tensor(embedding)
 
-    def query(self, model, n_subset: int = None) -> np.ndarray:
-        gradEmbedding = self.get_grad_embedding(model, n_subset)
-        chosen = init_centers(gradEmbedding, self.n_query)
+    def query(self, model) -> np.ndarray:
+        # unlabeled index
+        unlabeled_idx = self.get_unlabeled_idx()
         
-        unlabeled_idx = np.where(self.labeled_idx==False)[0] 
+        # get gradients of embedding
+        gradEmbedding = self.get_grad_embedding(model=model, unlabeled_idx=unlabeled_idx)
+        chosen = init_centers(X=gradEmbedding, K=self.n_query)
+        
         select_idx = unlabeled_idx[chosen]        
         return select_idx
 
