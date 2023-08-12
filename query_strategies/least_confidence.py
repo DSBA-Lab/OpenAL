@@ -17,13 +17,12 @@ class LeastConfidence(Strategy):
             num_workers = num_workers
         )
     
-    def query(self, model, n_subset: int = None) -> np.ndarray:
-        
-       # predict probability on unlabeled dataset
-        probs = self.extract_unlabeled_prob(model=model, n_subset=n_subset)
-        
+    def query(self, model) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]
+        unlabeled_idx = self.get_unlabeled_idx()
+        
+        # predict probability on unlabeled dataset
+        probs = self.extract_unlabeled_prob(model=model, unlabeled_idx=unlabeled_idx)
         
         # select least confidence
         max_confidence = probs.max(1)[0]

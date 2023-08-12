@@ -15,28 +15,29 @@ class AlphaMixSampling(Strategy):
    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, 
         dataset: Dataset, batch_size: int, num_workers: int):
       super(AlphaMixSampling, self).__init__(
-         model       = model,
+            model       = model,
             n_query     = n_query, 
             labeled_idx = labeled_idx, 
             dataset     = dataset,
             batch_size  = batch_size,
             num_workers = num_workers)
+      
       self.device = next(model.parameters()).device
 
-   def query(self, model, n_subset: int = None) -> np.ndarray:
+   def query(self, model) -> np.ndarray:
       
-      n = self.n_query
-      unlabeled_idx = np.where(self.labeled_idx==False)[0]
+      # unlabeled index
+      unlabeled_idx = self.get_unlabeled_idx()
+      # predict probability and embedding on unlabeled dataset
+      ulb_probs, ulb_embedding = self.extract_unlabeled_prob_embed(model=model, unlabeled_idx=unlabeled_idx)
 
-      ulb_probs, org_ulb_embedding = self.extract_unlabeled_prob_embed(model=model, n_subset=n_subset)
-
-      probs_sorted, probs_sort_idxs = ulb_probs.sort(descending=True)
+      _, probs_sort_idxs = ulb_probs.sort(descending=True)
       pred_1 = probs_sort_idxs[:, 0]
 
-      lb_probs, org_lb_embedding, Y = self.extract_labeled_prob_embed(model=model, n_subset=n_subset)
-
-      ulb_embedding = org_ulb_embedding
-      lb_embedding = org_lb_embedding
+      # labeled index
+      labeled_idx = np.where(self.labeled_idx==True)[0]
+      # predict probability and embedding on labeled dataset
+      _, lb_embedding, Y = self.extract_labeled_prob_embed(model=model, labeled_idx=labeled_idx)
 
       unlabeled_size = ulb_embedding.size(0)
       embedding_size = ulb_embedding.size(1)*ulb_embedding.size(2)*ulb_embedding.size(3)
@@ -65,7 +66,7 @@ class AlphaMixSampling(Strategy):
          min_alphas[is_changed] = tmp_min_alphas[is_changed]
          candidate += tmp_pred_change
 
-         if candidate.sum() > n:
+         if candidate.sum() > self.n_query:
             break
 
       if candidate.sum() > 0:
@@ -90,7 +91,6 @@ class AlphaMixSampling(Strategy):
          selected_idxs = np.concatenate([selected_idxs, np.random.choice(np.where(idx_lb == 0)[0], remained)])
          print('picked %d samples from RandomSampling.' % (remained))
 
-      #return np.array(selected_idxs), ulb_embedding, pred_1, ulb_probs, u_selected_idxs, idxs_unlabeled[candidate]
       return np.array(selected_idxs)
 
    def find_candidate_set(self, lb_embedding, ulb_embedding, pred_1, ulb_probs, alpha_cap, Y, grads):
@@ -153,13 +153,10 @@ class AlphaMixSampling(Strategy):
 
       return alpha
 
-   def extract_unlabeled_prob_embed(self, model, n_subset: int = None) -> torch.Tensor:         
+   def extract_unlabeled_prob_embed(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:         
         
       # define sampler
-      unlabeled_idx = np.where(self.labeled_idx==False)[0]
-      sampler = SubsetSequentialSampler(
-         indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
-      )
+      sampler = SubsetSequentialSampler(indices=unlabeled_idx)
 
       # unlabeled dataloader
       dataloader = DataLoader(
@@ -185,13 +182,10 @@ class AlphaMixSampling(Strategy):
 
       return torch.vstack(probs), torch.vstack(embeds)
     
-   def extract_labeled_prob_embed(self, model, n_subset: int = None) -> torch.Tensor:         
+   def extract_labeled_prob_embed(self, model, labeled_idx: np.ndarray) -> torch.Tensor:         
         
       # define sampler
-      labeled_idx = np.where(self.labeled_idx==True)[0]
-      sampler = SubsetSequentialSampler(
-         indices = self.subset_sampling(indices=labeled_idx, n_subset=n_subset) if n_subset else labeled_idx
-      )
+      sampler = SubsetSequentialSampler(indices=labeled_idx)
 
       # unlabeled dataloader
       dataloader = DataLoader(

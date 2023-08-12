@@ -4,10 +4,12 @@ from torch.utils.data import Dataset
 from .strategy import Strategy
 
 from torch.utils.data import Dataset, DataLoader
-from .strategy import Strategy,SubsetSequentialSampler
+from .strategy import Strategy, SubsetSequentialSampler
 
-# Mean Standard Sampling 
 class MeanSTDSampling(Strategy):
+    '''
+    Mean Standard Sampling (MeanSTD)
+    '''
     def __init__(
         self, model, n_query: int, labeled_idx: np.ndarray, 
         dataset: Dataset, batch_size: int, num_workers: int, num_mcdropout: int = 10):
@@ -23,12 +25,9 @@ class MeanSTDSampling(Strategy):
 
         self.num_mcdropout = num_mcdropout
 
-    def extarct_unlabeled_prob(self, model, n_subset: int = None) -> torch.Tensor:
-        # define sampler
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]        
-        sampler = SubsetSequentialSampler(
-            indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
-        )
+    def extarct_unlabeled_prob(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:
+        # define sampler    
+        sampler = SubsetSequentialSampler(indices=unlabeled_idx)
         
         # unlabeled dataloader
         dataloader = DataLoader(
@@ -41,25 +40,32 @@ class MeanSTDSampling(Strategy):
         # predict
         device = next(model.parameters()).device
         model.train()
+        
         with torch.no_grad():
             probs = [] 
+            # iteration for the number of MC Dropout
             for i in range(self.num_mcdropout):
                 mc_probs = [] 
+                
                 for j, (inputs,_) in enumerate(dataloader):
                     outputs = model(inputs.to(device))
                     outputs = torch.nn.functional.softmax(outputs,dim=1)
                     mc_probs.extend(outputs.detach().cpu().numpy())
                 probs.append(mc_probs)
-        probs = np.array(probs)        
-        return probs, unlabeled_idx   
+                
+        probs = np.array(probs)
+        
+        return probs   
           
-    def query(self, model, n_subset: int = None) -> np.ndarray:
+    def query(self, model) -> np.ndarray:
+        # unlabeled index
+        unlabeled_idx = self.get_unlabeled_idx()
         
         # 라벨링되지 않은 데이터셋에 대한 확률값 예측
-        outputs,random_subset = self.extarct_unlabeled_prob(model, n_subset)
-        sigma_c = np.std(outputs, axis = 0)
-        _uncertainties = np.mean(sigma_c, axis = -1)
+        outputs = self.extarct_unlabeled_prob(model=model, unlabeled_idx=unlabeled_idx)
+        sigma_c = np.std(outputs, axis=0)
+        uncertainties = np.mean(sigma_c, axis=-1)
 
-        select_idx = random_subset[torch.Tensor(-np.array(_uncertainties)).sort(descending=True)[1][:self.n_query]]
+        select_idx = unlabeled_idx[torch.Tensor(-np.array(uncertainties)).sort(descending=True)[1][:self.n_query]]
 
         return select_idx    

@@ -17,10 +17,12 @@ class SubsetSequentialSampler(Sampler):
 
 class Strategy:
     def __init__(
-        self, model, n_query: int, dataset: Dataset, labeled_idx: np.ndarray, batch_size: int, num_workers: int):
+        self, model, n_query: int, dataset: Dataset, labeled_idx: np.ndarray, 
+        batch_size: int, num_workers: int, n_subset: int = 0):
         
         self.model = model
         self.n_query = n_query
+        self.n_subset = n_subset
         self.labeled_idx = labeled_idx 
         self.dataset = dataset
         self.batch_size = batch_size
@@ -56,14 +58,17 @@ class Strategy:
             
         return subset_indices
 
-
-    def extract_unlabeled_prob(self, model, n_subset: int = None) -> torch.Tensor:         
-        
-        # define sampler
+    def get_unlabeled_idx(self):
         unlabeled_idx = np.where(self.labeled_idx==False)[0]
-        sampler = SubsetSequentialSampler(
-            indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
-        )
+        if self.n_subset > 0:
+            assert self.n_subset > self.n_query, 'the number of subset must larger than the number of query.'
+            unlabeled_idx = self.subset_sampling(indices=unlabeled_idx, n_subset=self.n_subset)
+            
+        return unlabeled_idx
+
+    def extract_unlabeled_prob(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:         
+        # define sampler
+        sampler = SubsetSequentialSampler(indices=unlabeled_idx)
         
         # unlabeled dataloader
         dataloader = DataLoader(

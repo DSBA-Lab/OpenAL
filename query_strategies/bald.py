@@ -22,12 +22,9 @@ class BALD(Strategy):
         self.num_mcdropout = num_mcdropout
         
         
-    def extarct_unlabeled_prob(self, model, n_subset: int = None) -> torch.Tensor:
-        # define sampler
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]        
-        sampler = SubsetSequentialSampler(
-            indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
-        )
+    def extarct_unlabeled_prob(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:
+        # define sampler 
+        sampler = SubsetSequentialSampler(indices=unlabeled_idx)
         
         # unlabeled dataloader
         dataloader = DataLoader(
@@ -42,33 +39,38 @@ class BALD(Strategy):
         model.train()
         with torch.no_grad():
             probs = [] 
+            # iteration for the number of MC Dropout
             for i in range(self.num_mcdropout):
                 mc_probs = [] 
+                
                 for j, (inputs,_) in enumerate(dataloader):
                     outputs = model(inputs.to(device))
                     outputs = torch.nn.functional.softmax(outputs,dim=1)
                     mc_probs.extend(outputs.detach().cpu().numpy())
                 probs.append(mc_probs)
         probs = np.array(probs)        
-        return probs, unlabeled_idx 
+        
+        return probs 
     
-    def shannon_entropy_function(self,model, n_subset: int):
-        outputs,random_subset = self.extarct_unlabeled_prob(model, n_subset)
+    def shannon_entropy_function(self, model, unlabeled_idx: np.ndarray):
+        outputs = self.extarct_unlabeled_prob(model=model, unlabeled_idx=unlabeled_idx)
         pc = outputs.mean(axis=0)
         H = (-pc * np.log(pc + 1e-10)).sum(axis=-1)  # To avoid division with zero, add 1e-10
         E = -np.mean(np.sum(outputs * np.log(outputs + 1e-10), axis=-1), axis=0)
-        return H, E, random_subset
+        return H, E
         
-    def query(self, model, n_subset: int = None) -> np.ndarray:
+    def query(self, model) -> np.ndarray:
+        # unlabeled index
+        unlabeled_idx = self.get_unlabeled_idx()
         
         # predict probability on unlabeled dataset
-        H,E_H,random_subset = self.shannon_entropy_function(model, n_subset)
+        H, E_H = self.shannon_entropy_function(model=model, unlabeled_idx=unlabeled_idx)
         
         # calculate mutual information 
         mutual_information = H - E_H 
         
         # select maximum mutual_information
-        select_idx = random_subset[torch.Tensor(mutual_information).sort(descending=True)[1][:self.n_query]]
+        select_idx = unlabeled_idx[torch.Tensor(mutual_information).sort(descending=True)[1][:self.n_query]]
         
         return select_idx
     
