@@ -19,10 +19,9 @@ def create_labeled_index(method: str, trainset: Dataset, size: int, seed: int, *
     '''
     
     sample_idx = np.arange(len(trainset))
-    targets = trainset.data_info.label.tolist()
     
     if method == 'stratified_random_select':
-        kwargs['stratify'] = targets
+        kwargs['stratify'] = get_target_from_dataset(dataset=trainset)
     
     # defined empty labeled index
     labeled_idx = np.zeros_like(sample_idx, dtype=bool)
@@ -32,6 +31,22 @@ def create_labeled_index(method: str, trainset: Dataset, size: int, seed: int, *
     labeled_idx[selected_idx] = True
     
     return labeled_idx
+
+def get_target_from_dataset(dataset):
+    # if class name is ALDataset
+    if dataset.__class__.__name__ == "ALDataset":
+        targets = dataset.data_info.label.tolist()
+    else:
+       # attribution name list in benchmark dataset class
+        target_attrs = ['targets', 'labels'] # TODO: if target attribution name is added, append in this line.
+
+        # iterativly check attribution name if not False else break
+        for attr in target_attrs:
+            targets = getattr(dataset, attr, False)
+            if targets is not False:
+                break
+
+    return targets
 
 
 def random_select(sample_idx: list, size: int, seed: int):

@@ -418,6 +418,7 @@ def al_run(
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = n_query, 
+        n_subset      = n_subset,
         batch_size    = batch_size, 
         num_workers   = num_workers,
         params        = cfg.AL.get('params', {})
@@ -454,7 +455,7 @@ def al_run(
         
         if r != 0:    
             # query sampling    
-            query_idx = strategy.query(model, n_subset=n_subset)
+            query_idx = strategy.query(model)
             
             # save query index
             query_log_df.loc[query_idx, 'query_round'] = f'round{r}'

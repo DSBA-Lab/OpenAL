@@ -17,10 +17,9 @@ class RandomSampling(Strategy):
             num_workers = num_workers
         )
         
-    def query(self, model, n_subset: int = None) -> np.ndarray:
-        
+    def query(self, model) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]
+        unlabeled_idx = self.get_unlabeled_idx()
         
         np.random.shuffle(unlabeled_idx)
         select_idx = unlabeled_idx[:self.n_query]
