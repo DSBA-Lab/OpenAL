@@ -88,6 +88,9 @@ def parser():
     # load dataset statistics
     cfg.DATASET.update(stats.datasets[cfg.DATASET.dataname])
     
+    # update stategy configs
+    cfg = update_stategy_cfg(cfg)
+    
     print(OmegaConf.to_yaml(cfg))
     
     return cfg  
@@ -121,4 +124,27 @@ def parser_ssl():
     
     print(OmegaConf.to_yaml(cfg))
     
-    return cfg  
+    return cfg
+
+
+
+def update_stategy_cfg(cfg):
+    if 'PT4' in cfg.AL.strategy:
+        cfg = _update_pt4al_cfg(cfg)
+        
+    return cfg
+
+
+def _update_pt4al_cfg(cfg):
+    # for AL params
+    cfg.AL.params.n_start = cfg.AL.n_start
+    cfg.AL.params.n_end = cfg.AL.n_end
+    
+    # for AL init params
+    cfg.AL.init.params = {
+        'batch_path' : cfg.AL.params.batch_path,
+        'n_query'    : cfg.AL.n_query,
+        'n_end'      : cfg.AL.n_end
+    }
+
+    return cfg        
