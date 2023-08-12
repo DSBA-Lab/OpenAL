@@ -1,0 +1,6 @@
+AL:
+  strategy: PT4EntropySampling
+  params:
+    batch_path: ./results/batch/rotation/CIFAR10/resnet18/default/batch.csv
+  init:
+    method: batch_select
