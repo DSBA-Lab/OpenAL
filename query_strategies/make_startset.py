@@ -156,7 +156,7 @@ def batch_select(sample_idx: list, size: int, **kwargs):
     # get params for batch sampling
     _, _, b_init, sampling_interval = get_batch_params(
         batch_size = len(batch_idx),
-        n_init     = size,
+        n_start    = size,
         n_end      = kwargs['n_end'],
         n_query    = kwargs['n_query']
     )
@@ -167,9 +167,9 @@ def batch_select(sample_idx: list, size: int, **kwargs):
     return selected_idx
 
 
-def get_batch_params(batch_size: int, n_init: int, n_end: int, n_query: int):
+def get_batch_params(batch_size: int, n_start: int, n_end: int, n_query: int):
     # total round that includes first round
-    total_round = ((n_end - n_init)/n_query) + 1
+    total_round = ((n_end - n_start)/n_query) + 1
     if total_round % 2 != 0:
         total_round = int(total_round) + 1
     else:

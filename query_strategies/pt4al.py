@@ -7,7 +7,7 @@ from .make_startset import get_batch_params
 
 class PT4AL:
     def __init__(
-        self, n_query: int, n_init: int, n_end: int, batch_path: str):
+        self, n_query: int, n_start: int, n_end: int, batch_path: str):
         
         # round log
         self.r = 1
@@ -17,11 +17,11 @@ class PT4AL:
         self.batch_idx = pd.read_csv(batch_path)['idx'].values
         
         # al setting
-        self.n_init = n_init
+        self.n_start = n_start
         self.n_end = n_end
         self.total_round, self.b_size, self.b_init, self.sampling_interval = get_batch_params(
             batch_size = len(self.batch_idx),
-            n_init     = n_init,
+            n_start    = n_start,
             n_end      = n_end,
             n_query    = n_query
         )
@@ -45,11 +45,11 @@ class PT4AL:
     
 class PT4LeastConfidence(PT4AL, LeastConfidence):
     def __init__(self, model, n_query: int, labeled_idx: np.ndarray, dataset: Dataset, batch_size: int, num_workers: int, 
-        n_init: int, n_end: int, batch_path: str, n_subset: int = 0):
+        n_start: int, n_end: int, batch_path: str, n_subset: int = 0):
         
         super(PT4AL, self).__init__(
             n_query    = n_query, 
-            n_init     = n_init, 
+            n_start    = n_start, 
             n_end      = n_end, 
             batch_path = batch_path
         )
