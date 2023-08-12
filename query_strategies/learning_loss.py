@@ -120,8 +120,8 @@ class LearningLossAL(Strategy):
     def __init__(
         self, model, n_query: int, labeled_idx: np.ndarray, 
         dataset: Dataset, batch_size: int, num_workers: int, 
-        margin: float, loss_weight: float, layer_ids: list, in_features_list: list, out_features: int = 128, 
-        in_layer: bool = False, channel_last: bool = False):
+        margin: float, loss_weight: float, layer_ids: list, in_features_list: list, n_subset: int = 0, 
+        out_features: int = 128, in_layer: bool = False, channel_last: bool = False):
         
         model = LearningLossModel(
             backbone         = model, 
@@ -134,7 +134,8 @@ class LearningLossAL(Strategy):
         
         super(LearningLossAL, self).__init__(
             model       = model,
-            n_query     = n_query, 
+            n_query     = n_query,
+            n_subset    = n_subset,
             labeled_idx = labeled_idx, 
             dataset     = dataset,
             batch_size  = batch_size,
