@@ -181,11 +181,12 @@ def get_batch_params(batch_size: int, n_start: int, n_end: int, n_query: int):
     
     # initial batch size
     b_init = int(b_size) if b_size % 2 == 0 else int(b_size) + 1
-        
-    if batch_size > b_init: # if initial sample larger than batch size, then initial batch size is defined as initial sample
-        b_init = batch_size
+    b_size = int(b_size)
+
+    if n_start > b_init: # if initial sample larger than batch size, then initial batch size is defined as initial sample
+        b_init = n_start
 
     # sampling interval
-    sampling_interval = int(b_init/batch_size)
+    sampling_interval = int(b_init/n_start)
     
     return total_round, b_size, b_init, sampling_interval
