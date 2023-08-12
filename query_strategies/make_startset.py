@@ -134,31 +134,43 @@ def batch_select(sample_idx: list, size: int, **kwargs):
     
     '''
     
-    ## load ssl pretext batch
+    # load ssl pretext batch
     batch_idx = pd.read_csv(kwargs['batch_path'])['idx'].values
     assert len(batch_idx) == len(sample_idx), 'sample_idx and batch_idx must same length.'
     
+    # get params for batch sampling
+    _, _, b_init, sampling_interval = get_batch_params(
+        batch_size = len(batch_idx),
+        n_init     = size,
+        n_end      = kwargs['n_end'],
+        n_query    = kwargs['n_query']
+    )
+
+    ## first bach uniform sampling
+    selected_idx = batch_idx[range(0, b_init, sampling_interval)][:size]
+    
+    return selected_idx
+
+
+def get_batch_params(batch_size: int, n_init: int, n_end: int, n_query: int):
     # total round that includes first round
-    total_round = ((kwargs['n_end'] - size)/kwargs['n_query']) + 1
+    total_round = ((n_end - n_init)/n_query) + 1
     if total_round % 2 != 0:
         total_round = int(total_round) + 1
     else:
         total_round = int(total_round)
 
     # batch size
-    b_size = len(batch_idx)/total_round
-    assert int(b_size) > kwargs['n_query'], 'the number of query must smaller than batch size.'
+    b_size = batch_size/total_round
+    assert int(b_size) > n_query, 'the number of query must smaller than batch size.'
     
     # initial batch size
     b_init = int(b_size) if b_size % 2 == 0 else int(b_size) + 1
         
-    if size > b_init: # if initial sample larger than batch size, then initial batch size is defined as initial sample
-        b_init = size
+    if batch_size > b_init: # if initial sample larger than batch size, then initial batch size is defined as initial sample
+        b_init = batch_size
 
     # sampling interval
-    sampling_interval = int(b_init/size)
-
-    ## first bach uniform sampling
-    selected_idx = batch_idx[range(0, b_init, sampling_interval)][:size]
+    sampling_interval = int(b_init/batch_size)
     
-    return selected_idx
+    return total_round, b_size, b_init, sampling_interval
