@@ -15,7 +15,7 @@ OPTIMIZER:
     momentum: 0.9
     weight_decay: 5e-4
 TRAIN:
-  epochs: 50
+  epochs: 120
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
