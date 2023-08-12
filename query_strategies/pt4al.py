@@ -1,85 +1,66 @@
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
-
-from .strategy import Strategy, SubsetSequentialSampler
-import os
 import pandas as pd
+from torch.utils.data import Dataset
 
-import torch
+from query_strategies import LeastConfidence
+from .make_startset import get_batch_params
 
-
-class PT4AL(Strategy):
+class PT4AL:
     def __init__(
-        self, model, n_query: int, labeled_idx: np.ndarray, 
-        dataset: Dataset, batch_size: int, num_workers: int, save_path: str, round: int, n_init: int):
+        self, n_query: int, n_init: int, n_end: int, batch_path: str):
+        
+        # round log
+        self.r = 1
+        
+        # batch file
+        self.batch_path = batch_path
+        self.batch_idx = pd.read_csv(batch_path)['idx'].values
+        
+        # al setting
+        self.n_init = n_init
+        self.n_end = n_end
+        self.total_round, self.b_size, self.b_init, self.sampling_interval = get_batch_params(
+            batch_size = len(self.batch_idx),
+            n_init     = n_init,
+            n_end      = n_end,
+            n_query    = n_query
+        )
+        
+    def batch_sampling(self, r: int):
+        # current used batch size
+        current_size = self.b_init if r == 1 else self.b_init + (self.b_size * (r-1))
+        
+        # select index for query sampling
+        selected_idx = range(current_size, current_size + self.b_size, self.sampling_interval)[:self.n_query]
+        
+        return self.batch_idx[selected_idx]
+
+            
+    def get_unlabeled_idx(self):
+        unlabeled_idx = self.batch_sampling(r=self.r)
+        self.r += 1
+        
+        return unlabeled_idx
+    
+    
+class PT4LeastConfidence(PT4AL, LeastConfidence):
+    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, dataset: Dataset, batch_size: int, num_workers: int, 
+        n_init: int, n_end: int, batch_path: str, n_subset: int = 0):
         
         super(PT4AL, self).__init__(
+            n_query    = n_query, 
+            n_init     = n_init, 
+            n_end      = n_end, 
+            batch_path = batch_path
+        )
+        
+        super(LeastConfidence, self).__init__(
             model       = model,
             n_query     = n_query, 
+            n_subset    = n_subset,
             labeled_idx = labeled_idx, 
             dataset     = dataset,
             batch_size  = batch_size,
             num_workers = num_workers
         )
         
-        self.cycle = 0
-        self.save_path = save_path
-        self.round = round
-        self.n_init = n_init
-
-            
-    def extract_unlabeled_prob(self, model, n_subset: int = None) -> np.ndarray:
-        
-        self.cycle += 1
-        
-        # load ssl_pretext batch data
-        ssl_batch_path = os.path.join(self.save_path, 'batch', f'batch_loss.txt')
-        with open(ssl_batch_path, 'r') as f:
-            samples = f.readlines()
-        
-        # pt4al batch indexing
-        batch_sample = samples[self.n_init + len(samples)//self.round * (self.cycle-1) : self.n_init + len(samples)//self.round * (self.cycle)]
-  
-            
-        batch_idx = list(map(int, pd.DataFrame(batch_sample)[0].str.replace('\n', '')))
-        
-        sampler = SubsetSequentialSampler(
-            indices = self.subset_sampling(indices=batch_idx, n_subset=n_subset) if n_subset else batch_idx
-        )
-        
-        # unlabeled dataloader
-        dataloader = DataLoader(
-            dataset     = self.dataset,
-            batch_size  = self.batch_size,
-            sampler     = sampler,
-            num_workers = self.num_workers
-        )
-        
-        # predict probability on pt4al selected index
-        probs = []
-        
-        device = next(model.parameters()).device
-        model.eval()
-        with torch.no_grad():
-            for i, (inputs, _) in enumerate(dataloader):
-                outputs = model(inputs.to(device))
-                outputs = torch.nn.functional.softmax(outputs, dim=1)
-                probs.append(outputs.cpu())
-                
-        probs = torch.vstack(probs)
-        
-        return probs, batch_idx
-    
-          
-    def query(self, model, n_subset: int = None) -> np.ndarray:
-        
-        probs, batch_idx = self.extract_unlabeled_prob(model, n_subset)
-        
-        # unlabeled index
-        unlabeled_idx = np.array(batch_idx)
-        
-        # select least confidence
-        max_confidence = probs.max(1)[0]
-        select_idx = unlabeled_idx[max_confidence.sort()[1][:self.n_query]]
-           
-        return select_idx
