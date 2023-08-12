@@ -7,46 +7,17 @@ def convert_type(value):
     if value == 'None':
         return None
     
-    # list or tuple
-    elif len(value.split(',')) > 1:
-        return value.split(',')
-    
     # bool
-    check, value = str_to_bool(value)
-    if check:
-        return value
-    
-    # float
-    check, value = str_to_float(value)
-    if check:
-        return value
-    
-    # int
-    check, value = str_to_int(value)
-    if check:
-        return value
+    for t in [bool, float, int, list, dict]:
+        check, value = str_to_type(value=value, type=t)
+        if check:
+            return value
     
     return value
 
-def str_to_bool(value):
+def str_to_type(value, type):
     try:
-        check = isinstance(eval(value), bool)
-        out = [True, eval(value)] if check else [False, value]
-        return out
-    except NameError:
-        return False, value
-    
-def str_to_float(value):
-    try:
-        check = isinstance(eval(value), float)
-        out = [True, eval(value)] if check else [False, value]
-        return out
-    except NameError:
-        return False, value
-    
-def str_to_int(value):
-    try:
-        check = isinstance(eval(value), int)
+        check = isinstance(eval(value), type)
         out = [True, eval(value)] if check else [False, value]
         return out
     except NameError:
