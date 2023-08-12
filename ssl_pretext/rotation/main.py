@@ -181,9 +181,12 @@ def run(cfg):
     # optimizer
     optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.opt_name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
     
+    # scheduler
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30, 60, 90])
+    
     # prepraring accelerator
-    model, optimizer, trainloader, validloader, batchloader = accelerator.prepare(
-        model, optimizer, trainloader, validloader, batchloader
+    model, optimizer, trainloader, validloader, batchloader, scheduler = accelerator.prepare(
+        model, optimizer, trainloader, validloader, batchloader, scheduler
     )
     
     # initialize wandb
@@ -197,7 +200,7 @@ def run(cfg):
         testloader   = validloader, 
         criterion    = criterion, 
         optimizer    = optimizer, 
-        scheduler    = None,
+        scheduler    = scheduler,
         accelerator  = accelerator,
         epochs       = cfg.TRAIN.epochs, 
         use_wandb    = cfg.TRAIN.wandb.use,
