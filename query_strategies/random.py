@@ -6,11 +6,12 @@ from .strategy import Strategy
 class RandomSampling(Strategy):
     def __init__(
         self, model, n_query: int, labeled_idx: np.ndarray, 
-        dataset: Dataset, batch_size: int, num_workers: int):
+        dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0):
         
         super(RandomSampling, self).__init__(
             model       = model,
-            n_query     = n_query, 
+            n_query     = n_query,
+            n_subset    = n_subset,
             labeled_idx = labeled_idx, 
             dataset     = dataset,
             batch_size  = batch_size,

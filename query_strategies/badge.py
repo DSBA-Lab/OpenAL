@@ -12,12 +12,13 @@ from .strategy import Strategy,SubsetSequentialSampler
 
 class BADGE(Strategy):
     def __init__(
-        self, model, n_query: int, labeled_idx: np.ndarray, 
-        dataset: Dataset, batch_size: int, num_workers: int):
+        self, model, n_query: int, labeled_idx: np.ndarray,
+        dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0):
         
         super(BADGE, self).__init__(
             model       = model,
             n_query     = n_query, 
+            n_subset    = n_subset,
             labeled_idx = labeled_idx, 
             dataset     = dataset,
             batch_size  = batch_size,
