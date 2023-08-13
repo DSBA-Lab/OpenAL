@@ -480,17 +480,20 @@ def comparison_strategy(
     
             
     # get full supervised learning results
-    r_full = extract_full_results(
-        savedir       = savedir,
-        fullname_list = fullname_list,
-        seed_list     = seed_list,
-        model         = model,
-        test          = test,
-        binary        = binary
-    )
-            
+    if fullname_list != None:
+        r_full = extract_full_results(
+            savedir       = savedir,
+            fullname_list = fullname_list,
+            seed_list     = seed_list,
+            model         = model,
+            test          = test,
+            binary        = binary
+        )
+    else:
+        r_full = None
+        
     # plot
-    metrics = r_full.columns.tolist()
+    metrics = ['auroc','f1','recall','precision','bcr','acc']
     row = 2
     col = len(metrics)//row
     fig, ax = plt.subplots(row, col, figsize=figsize)
@@ -535,9 +538,13 @@ def strategy_figure(data, data_full, metric, total_round, n_query, n_start, ax):
         ax   = ax
     )
     
-    ax.axhline(y=data_full[metric].mean(), color='black')
-    ax.axhline(y=data_full[metric].mean() + data_full[metric].std(), linestyle='--', color='black')
-    ax.axhline(y=data_full[metric].mean() - data_full[metric].std(), linestyle='--', color='black')    
+    # full supervised learning
+    if data_full != None:
+        ax.axhline(y=data_full[metric].mean(), color='black')
+        ax.axhline(y=data_full[metric].mean() + data_full[metric].std(), linestyle='--', color='black')
+        ax.axhline(y=data_full[metric].mean() - data_full[metric].std(), linestyle='--', color='black')   
+        
+    # figure info
     ax.set_title(metric.upper())
     ax.set_ylabel('Score')
     ax.set_xlabel('The Number of Labeled Images')
