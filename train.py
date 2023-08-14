@@ -51,6 +51,14 @@ def accuracy(outputs, targets, return_correct=False):
         return correct/targets.size(0)
 
 
+def create_scheduler(sched_name, optimizer, epochs: int, params: dict):
+    if sched_name == 'cosine_annealing':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=params['t_mult'], eta_min=params['eta_min'])
+    elif sched_name == 'multi_step':
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=params['milestones'])
+        
+    return scheduler
+
 def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_class: bool = False) -> dict:
     # softmax
     y_score = torch.nn.functional.softmax(torch.FloatTensor(y_score), dim=1)
@@ -281,7 +289,7 @@ def full_run(
     modelname: str, pretrained: bool,
     trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
-    opt_name: str, lr: float, opt_params: dict,
+    opt_name: str, lr: float, opt_params: dict, sched_name: str, sched_params: dict,
     epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None):
     
     # logging
@@ -323,7 +331,7 @@ def full_run(
     optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr, **opt_params)
 
     # scheduler
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
+    scheduler = create_scheduler(sched_name=sched_name, optimizer=optimizer, epochs=epochs, params=sched_params)
 
     # criterion 
     criterion = torch.nn.CrossEntropyLoss()
@@ -385,7 +393,7 @@ def al_run(
     init_method: str, init_method_params: dict,
     trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
-    opt_name: str, lr: float, opt_params: dict,
+    opt_name: str, lr: float, opt_params: dict, sched_name: str, sched_params: dict,
     epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None, cfg: dict = None):
     
     assert cfg != None if use_wandb else True, 'If you use wandb, configs should be exist.'
@@ -418,6 +426,7 @@ def al_run(
         dataset       = trainset, 
         labeled_idx   = labeled_idx, 
         n_query       = n_query, 
+        n_subset      = n_subset,
         batch_size    = batch_size, 
         num_workers   = num_workers,
         params        = cfg.AL.get('params', {})
@@ -454,7 +463,7 @@ def al_run(
         
         if r != 0:    
             # query sampling    
-            query_idx = strategy.query(model, n_subset=n_subset)
+            query_idx = strategy.query(model)
             
             # save query index
             query_log_df.loc[query_idx, 'query_round'] = f'round{r}'
@@ -478,8 +487,8 @@ def al_run(
         optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr, **opt_params)
 
         # scheduler
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=1, eta_min=0.00001)
-        
+        scheduler = create_scheduler(sched_name=sched_name, optimizer=optimizer, epochs=epochs, params=sched_params)
+
         # define test dataloader
         validloader = DataLoader(
             dataset     = validset,

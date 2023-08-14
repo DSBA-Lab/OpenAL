@@ -120,8 +120,8 @@ class LearningLossAL(Strategy):
     def __init__(
         self, model, n_query: int, labeled_idx: np.ndarray, 
         dataset: Dataset, batch_size: int, num_workers: int, 
-        margin: float, loss_weight: float, layer_ids: list, in_features_list: list, out_features: int = 128, 
-        in_layer: bool = False, channel_last: bool = False):
+        margin: float, loss_weight: float, layer_ids: list, in_features_list: list, n_subset: int = 0, 
+        out_features: int = 128, in_layer: bool = False, channel_last: bool = False):
         
         model = LearningLossModel(
             backbone         = model, 
@@ -134,7 +134,8 @@ class LearningLossAL(Strategy):
         
         super(LearningLossAL, self).__init__(
             model       = model,
-            n_query     = n_query, 
+            n_query     = n_query,
+            n_subset    = n_subset,
             labeled_idx = labeled_idx, 
             dataset     = dataset,
             batch_size  = batch_size,
@@ -146,13 +147,12 @@ class LearningLossAL(Strategy):
         self.loss_weight = loss_weight
     
     
-    def query(self, model, n_subset: int = None) -> np.ndarray:
-        
-       # predict loss-prediction on unlabeled dataset
-        loss_pred = self.extract_unlabeled_prob(model=model, n_subset=n_subset)
-        
+    def query(self, model) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]
+        unlabeled_idx = self.get_unlabeled_idx()
+        
+        # predict loss-prediction on unlabeled dataset
+        loss_pred = self.extract_unlabeled_prob(model=model, unlabeled_idx=unlabeled_idx)
         
         # select loss
         select_idx = unlabeled_idx[loss_pred.sort(descending=True)[1][:self.n_query]]
@@ -174,13 +174,10 @@ class LearningLossAL(Strategy):
         return target_loss.mean() + (self.loss_weight * loss_pred_loss.mean())
     
     
-    def extract_unlabeled_prob(self, model, n_subset: int = None) -> torch.Tensor:         
+    def extract_unlabeled_prob(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:         
         
         # define sampler
-        unlabeled_idx = np.where(self.labeled_idx==False)[0]
-        sampler = SubsetSequentialSampler(
-            indices = self.subset_sampling(indices=unlabeled_idx, n_subset=n_subset) if n_subset else unlabeled_idx
-        )
+        sampler = SubsetSequentialSampler(indices=unlabeled_idx)
         
         # unlabeled dataloader
         dataloader = DataLoader(
