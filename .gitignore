@@ -132,8 +132,7 @@ log.txt*
 wandb/
 figure.ipynb
 *.pt
-benchmark_old/
-results*/
+results_old/
 saved_files/
 *.ipynb
 *.sh
