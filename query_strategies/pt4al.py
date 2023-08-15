@@ -69,7 +69,7 @@ class PT4MarginSampling(PT4AL, MarginSampling):
     def __init__(self, model, n_query: int, labeled_idx: np.ndarray, dataset: Dataset, batch_size: int, num_workers: int, 
         n_start: int, n_end: int, batch_path: str, n_subset: int = 0):
         
-        super(PT4LeastConfidence, self).__init__(
+        super(PT4MarginSampling, self).__init__(
             n_query    = n_query, 
             n_start    = n_start, 
             n_end      = n_end, 
@@ -91,7 +91,7 @@ class PT4EntropySampling(PT4AL, EntropySampling):
     def __init__(self, model, n_query: int, labeled_idx: np.ndarray, dataset: Dataset, batch_size: int, num_workers: int, 
         n_start: int, n_end: int, batch_path: str, n_subset: int = 0):
         
-        super(PT4LeastConfidence, self).__init__(
+        super(PT4EntropySampling, self).__init__(
             n_query    = n_query, 
             n_start    = n_start, 
             n_end      = n_end, 
