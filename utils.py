@@ -4,11 +4,27 @@ import re
 import os
 import pandas as pd
 import numpy as np
+import torch
+import random
 from omegaconf import OmegaConf
 from collections import defaultdict
 from glob import glob
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+
+def torch_seed(random_seed):
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed(random_seed)
+    torch.cuda.manual_seed_all(random_seed) # if use multi-GPU 
+    # CUDA randomness
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+    os.environ['PYTHONHASHSEED'] = str(random_seed)
+
 
 class NoIndent(object):
     """ Value wrapper. """
