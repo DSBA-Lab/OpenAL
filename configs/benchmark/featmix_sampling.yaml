@@ -1,2 +1,4 @@
 AL:
   strategy: AlphaMixSampling
+  params:
+    alpha_cap: 0.03125
