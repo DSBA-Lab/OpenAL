@@ -39,6 +39,6 @@ AL:
   n_start: 5000
   n_query: 20
   n_end: 6000
-  n_subset: null
+  n_subset: 0
   init:
     method: stratified_random_select
