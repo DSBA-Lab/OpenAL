@@ -509,7 +509,11 @@ def comparison_strategy(
         r_full = None
         
     # plot
-    metrics = ['auroc','f1','recall','precision','bcr','acc']
+    if binary:
+        metrics = ['acc','recall','precision','f1']
+    else:
+        metrics = ['auroc','f1','recall','precision','bcr','acc']
+        
     row = 2
     col = len(metrics)//row
     fig, ax = plt.subplots(row, col, figsize=figsize)
@@ -545,7 +549,7 @@ def comparison_strategy(
 
 def strategy_figure(data, data_full, metric, total_round, n_query, n_start, ax):
     data = pd.concat(list(data.values()))
-    
+
     sns.lineplot(
         x    = 'round',
         y    = metric,
@@ -555,7 +559,7 @@ def strategy_figure(data, data_full, metric, total_round, n_query, n_start, ax):
     )
     
     # full supervised learning
-    if data_full != None:
+    if isinstance(data_full, pd.DataFrame):
         ax.axhline(y=data_full[metric].mean(), color='black')
         ax.axhline(y=data_full[metric].mean() + data_full[metric].std(), linestyle='--', color='black')
         ax.axhline(y=data_full[metric].mean() - data_full[metric].std(), linestyle='--', color='black')   
