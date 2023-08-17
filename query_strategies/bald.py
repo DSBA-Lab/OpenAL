@@ -2,8 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from torch.utils.data import Dataset, DataLoader
-from .strategy import Strategy,SubsetSequentialSampler
+from .strategy import Strategy
 
 class BALD(Strategy):
     def __init__(
@@ -34,7 +33,7 @@ class BALD(Strategy):
         # pc: (samples x num_classes)
         pc = outputs.mean(dim=0)
         H = (-pc * torch.log(pc + 1e-10)).sum(dim=1)  # To avoid division with zero, add 1e-10
-        E = -torch.mean(torch.sum(outputs * torch.log(outputs + 1e-10), dim=1), dim=0)
+        E = -torch.mean(torch.sum(outputs * torch.log(outputs + 1e-10), dim=2), dim=0)
         return H, E
         
     def query(self, model) -> np.ndarray:

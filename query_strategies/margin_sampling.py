@@ -26,7 +26,7 @@ class MarginSampling(Strategy):
         probs = self.extract_outputs(
             model      = model, 
             sample_idx = unlabeled_idx, 
-        )
+        )['probs']
         
         # select margin between top two class probability
         sorted_desc_prob, _ = probs.sort(descending=True)

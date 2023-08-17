@@ -26,7 +26,7 @@ class LeastConfidence(Strategy):
         probs = self.extract_outputs(
             model      = model, 
             sample_idx = unlabeled_idx, 
-        )
+        )['probs']
         
         # select least confidence
         max_confidence = probs.max(1)[0]

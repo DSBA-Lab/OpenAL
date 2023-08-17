@@ -67,7 +67,7 @@ class Strategy:
             
         return unlabeled_idx
 
-    def extract_outputs(self, model, sample_idx: np.ndarray, num_mcdropout: int,
+    def extract_outputs(self, model, sample_idx: np.ndarray, num_mcdropout: int = 0,
                         return_probs: bool = True, return_embed: bool = False, return_labels: bool = False) -> torch.Tensor or dict:
         
         # define sampler
@@ -97,7 +97,7 @@ class Strategy:
                 # results type is dict
                 results = self.get_outputs(
                     model         = model,
-                    datalodaer    = dataloader,
+                    dataloader    = dataloader,
                     device        = device,
                     return_probs  = return_probs,
                     return_embed  = return_embed,
@@ -129,7 +129,7 @@ class Strategy:
                     
                 # return embedings            
                 if return_embed:
-                    embed = model(inputs.to(device))
+                    embed = model.forward_features(inputs.to(device))
                     results['embed'].append(embed.cpu())
                     forward_func = 'forward_head'
                 else:

@@ -32,7 +32,7 @@ class VarRatioSampling(Strategy):
         probs = self.extract_outputs(
             model      = model, 
             sample_idx = unlabeled_idx, 
-        )
+        )['probs']
         
         preds = probs.max(dim=1)[0]
         uncertainties = (1.0 - preds).sort(descending = True)[1]

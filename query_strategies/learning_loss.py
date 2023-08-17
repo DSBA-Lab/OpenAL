@@ -1,11 +1,11 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from copy import deepcopy
 from functools import partial
 from collections import OrderedDict
-from .strategy import Strategy, SubsetSequentialSampler
+from .strategy import Strategy
 
 
 class LearningLoss(nn.Module):
@@ -83,7 +83,7 @@ class LearningLossModel(nn.Module):
         self.save_forward_output()
         
         self.LPM = LossPredictionModule(
-            layer_ids        = self.lpm_layer_ids, 
+            layer_ids        = getattr(self, 'lpm_layer_ids', self.layer_ids), 
             in_features_list = in_features_list, 
             out_features     = out_features,
             channel_last     = channel_last
@@ -195,4 +195,4 @@ class LearningLossAL(Strategy):
                 outputs = model(inputs.to(device))
                 loss_pred.append(outputs['loss_pred'].cpu())
     
-        return torch.vstack(loss_pred)
+        return torch.hstack(loss_pred)

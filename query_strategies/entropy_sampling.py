@@ -27,7 +27,7 @@ class EntropySampling(Strategy):
         probs = self.extract_outputs(
             model      = model, 
             sample_idx = unlabeled_idx, 
-        )
+        )['probs']
         
         # select maximum entropy
         entropy = (-(probs*torch.log(probs))).sum(dim=1)
