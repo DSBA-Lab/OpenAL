@@ -152,7 +152,10 @@ class LearningLossAL(Strategy):
         unlabeled_idx = self.get_unlabeled_idx()
         
         # predict loss-prediction on unlabeled dataset
-        loss_pred = self.extract_unlabeled_prob(model=model, unlabeled_idx=unlabeled_idx)
+        loss_pred = self.extract_outputs(
+            model      = model, 
+            sample_idx = unlabeled_idx, 
+        )
         
         # select loss
         select_idx = unlabeled_idx[loss_pred.sort(descending=True)[1][:self.n_query]]
@@ -174,27 +177,22 @@ class LearningLossAL(Strategy):
         return target_loss.mean() + (self.loss_weight * loss_pred_loss.mean())
     
     
-    def extract_unlabeled_prob(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:         
-        
-        # define sampler
-        sampler = SubsetSequentialSampler(indices=unlabeled_idx)
-        
-        # unlabeled dataloader
-        dataloader = DataLoader(
-            dataset     = self.dataset,
-            batch_size  = self.batch_size,
-            sampler     = sampler,
-            num_workers = self.num_workers
-        )
-        
+    def get_outputs(
+        self, model, dataloader, device: str, **kwargs) -> dict:
+    
         # predict
         loss_pred = []
-        
-        device = next(model.parameters()).device
-        model.eval()
+    
         with torch.no_grad():
-            for i, (inputs, _) in enumerate(dataloader):
+            for batch in dataloader:
+                if len(batch) == 2:
+                    # for labeled dataset that contains labels
+                    inputs, _ = batch
+                else:
+                    # for unlabeled dataset that does not contain labels
+                    inputs = batch
+                    
                 outputs = model(inputs.to(device))
                 loss_pred.append(outputs['loss_pred'].cpu())
-                
-        return torch.cat(loss_pred)
+    
+        return torch.vstack(loss_pred)

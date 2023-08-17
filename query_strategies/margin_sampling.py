@@ -23,7 +23,10 @@ class MarginSampling(Strategy):
         unlabeled_idx = self.get_unlabeled_idx()
         
         # predict probability on unlabeled dataset
-        probs = self.extract_unlabeled_prob(model=model, unlabeled_idx=unlabeled_idx)
+        probs = self.extract_outputs(
+            model      = model, 
+            sample_idx = unlabeled_idx, 
+        )
         
         # select margin between top two class probability
         sorted_desc_prob, _ = probs.sort(descending=True)

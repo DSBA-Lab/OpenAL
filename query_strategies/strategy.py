@@ -1,6 +1,7 @@
 
 import numpy as np
 import torch
+from collections import defaultdict
 from copy import deepcopy
 from torch.utils.data import Dataset, DataLoader, Sampler, SubsetRandomSampler
 
@@ -66,9 +67,11 @@ class Strategy:
             
         return unlabeled_idx
 
-    def extract_unlabeled_prob(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:         
+    def extract_outputs(self, model, sample_idx: np.ndarray, num_mcdropout: int,
+                        return_probs: bool = True, return_embed: bool = False, return_labels: bool = False) -> torch.Tensor or dict:
+        
         # define sampler
-        sampler = SubsetSequentialSampler(indices=unlabeled_idx)
+        sampler = SubsetSequentialSampler(indices=sample_idx)
         
         # unlabeled dataloader
         dataloader = DataLoader(
@@ -78,15 +81,86 @@ class Strategy:
             num_workers = self.num_workers
         )
         
-        # predict
-        probs = []
-        
+        # inference
         device = next(model.parameters()).device
         model.eval()
         with torch.no_grad():
-            for i, (inputs, _) in enumerate(dataloader):
-                outputs = model(inputs.to(device))
-                outputs = torch.nn.functional.softmax(outputs, dim=1)
-                probs.append(outputs.cpu())
+            if num_mcdropout > 0:
+                # results type is torch.Tensor
+                results = self.mcdrop_outputs(
+                    model         = model, 
+                    dataloader    = dataloader, 
+                    device        = device, 
+                    num_mcdropout = num_mcdropout
+                )
+            else:
+                # results type is dict
+                results = self.get_outputs(
+                    model         = model,
+                    datalodaer    = dataloader,
+                    device        = device,
+                    return_probs  = return_probs,
+                    return_embed  = return_embed,
+                    return_labels = return_labels
+                )
                 
-        return torch.vstack(probs)
+        return results
+    
+    
+    def get_outputs(
+        self, model, dataloader, device: str, 
+        return_probs: bool = True, return_embed: bool = False, return_labels: bool = False) -> dict:
+        
+        # predict
+        results = defaultdict(list)
+        
+        with torch.no_grad():
+            for batch in dataloader:
+                if len(batch) == 2:
+                    # for labeled dataset that contains labels
+                    inputs, labels = batch
+                else:
+                    # for unlabeled dataset that does not contain labels
+                    inputs = batch
+                
+                # return labels    
+                if return_labels:
+                    results['labels'].append(labels.cpu())
+                    
+                # return embedings            
+                if return_embed:
+                    embed = model(inputs.to(device))
+                    results['embed'].append(embed.cpu())
+                    forward_func = 'forward_head'
+                else:
+                    embed = inputs
+                    forward_func = 'forward'
+                
+                # return probs
+                if return_probs:
+                    # forward head
+                    outputs = model.__getattribute__(forward_func)(embed.to(device))
+                    outputs = torch.nn.functional.softmax(outputs, dim=1)
+                    results['probs'].append(outputs.cpu())
+                
+        # stack
+        for k, v in results.items():
+            if k == 'labels':
+                results[k] = torch.hstack(v)
+            else:
+                results[k] = torch.vstack(v)
+    
+        return results
+    
+    
+    def mcdrop_outputs(self, model, dataloader, device: str, num_mcdropout: int) -> torch.Tensor:
+        # predict
+        model.train()
+        
+        mc_probs = []
+        # iteration for the number of MC Dropout
+        for _ in range(num_mcdropout):
+            probs = self.get_outputs(model=model, dataloader=dataloader, device=device)['probs']
+            mc_probs.append(probs)
+            
+        return torch.stack(mc_probs)
