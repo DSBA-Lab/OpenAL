@@ -71,6 +71,8 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10, img_size=32, drop_rate = 0.0):
         super(ResNet, self).__init__()
+        
+        self.num_classes = num_classes
         self.multiply = (img_size // 32) ** 2
         
         self.in_planes = 64
@@ -82,7 +84,7 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.linear = nn.Linear(self.num_features*self.multiply, num_classes)
+        self.linear = nn.Linear(self.num_features*self.multiply, self.num_classes)
         
         self.drop_rate = drop_rate
 
