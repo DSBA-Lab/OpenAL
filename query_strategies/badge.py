@@ -1,11 +1,8 @@
 import numpy as np
 from scipy import stats
 from copy import deepcopy as deepcopy
-import pdb 
-
 import torch
 import torch.nn.functional as F 
-from torch.utils.data import Dataset
 from torch.utils.data import Dataset, DataLoader
 
 from .strategy import Strategy,SubsetSequentialSampler
@@ -40,7 +37,7 @@ class BADGE(Strategy):
         # Prepare to get gradient embedding 
         embDim = model.num_features # number of features of embedding 
         device = next(model.parameters()).device 
-        nLab = len(dataloader.dataset.label_info['label'].unique()) # number of Label : 4 
+        nLab = model.num_classes # the number of classes
         embedding = np.zeros([len(sampler), embDim * nLab]) # Empty Tensor 
         
         model.eval()
