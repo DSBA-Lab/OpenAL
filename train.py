@@ -13,7 +13,7 @@ from collections import OrderedDict
 from accelerate import Accelerator
 
 from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, \
-                            balanced_accuracy_score, classification_report, confusion_matrix, accuracy_score
+                            balanced_accuracy_score, classification_report, confusion_matrix
 
 from query_strategies import create_query_strategy, create_labeled_index
 from models import create_model
@@ -65,9 +65,9 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
     
     # metrics
     auroc = roc_auc_score(y_true, y_score, average='macro', multi_class='ovr')
-    f1 = f1_score(y_true, y_pred, average='macro')
-    recall = recall_score(y_true, y_pred, average='macro')
-    precision = precision_score(y_true, y_pred, average='macro')
+    f1 = f1_score(y_true, y_pred, average='macro', zero_division=0.0)
+    recall = recall_score(y_true, y_pred, average='macro', zero_division=0.0)
+    precision = precision_score(y_true, y_pred, average='macro', zero_division=0.0)
     bcr = balanced_accuracy_score(y_true, y_pred)
 
     metrics = {
@@ -83,9 +83,9 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
         cm = confusion_matrix(y_true, y_pred)
         
         # merics per class
-        f1_per_class = f1_score(y_true, y_pred, average=None)
-        recall_per_class = recall_score(y_true, y_pred, average=None)
-        precision_per_class = precision_score(y_true, y_pred, average=None)
+        f1_per_class = f1_score(y_true, y_pred, average=None, zero_division=0.0)
+        recall_per_class = recall_score(y_true, y_pred, average=None, zero_division=0.0)
+        precision_per_class = precision_score(y_true, y_pred, average=None, zero_division=0.0)
         acc_per_class = cm.diagonal() / cm.sum(axis=1)
     
         metrics.update({
@@ -177,7 +177,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
                  (metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
     
     # classification report
-    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4))
+    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4, zero_division=0.0))
     
     return metrics
         
@@ -230,7 +230,7 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
                  (name, metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
     
     # classification report
-    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4))
+    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4, zero_division=0.0))
     
     return metrics
             
@@ -568,7 +568,7 @@ def al_run(
         # save results 
         log_metrics = {'round':r}
         log_metrics.update([(k, v) for k, v in eval_results.items()])
-        log_df_valid = log_df_valid.append(log_metrics, ignore_index=True)
+        log_df_valid = pd.concat([log_df_valid, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
         
         log_df_valid.round(4).to_csv(
             os.path.join(savedir, f"round{nb_round}-seed{seed}_best.csv"),
@@ -603,7 +603,7 @@ def al_run(
         # save results 
         log_metrics = {'round':r}
         log_metrics.update([(k, v) for k, v in test_results.items()])
-        log_df_test = log_df_test.append(log_metrics, ignore_index=True)
+        log_df_test = pd.concat([log_df_test, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
         
         log_df_test.round(4).to_csv(
             os.path.join(savedir, f"round{nb_round}-seed{seed}.csv"),
