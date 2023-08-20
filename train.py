@@ -101,7 +101,7 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
     return metrics
 
 
-def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int) -> dict:   
+def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, **train_params) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     acc_m = AverageMeter()
@@ -121,6 +121,12 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             
             # predict
             outputs = model(inputs)
+            
+            # detach LPM for learning loss
+            if 'is_detach_lpm' in train_params.keys():
+                if train_params['is_detach_lpm']:
+                    for k, v in model.layer_outputs.items():
+                        model.layer_outputs[k] = v.detach()
 
             # calc loss
             loss = criterion(outputs, targets)    
@@ -237,20 +243,29 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
                 
 def fit(
     model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, seed: int = None, savedir: str = None, ckp_metric: str = None
+    epochs: int, use_wandb: bool, log_interval: int, seed: int = None, savedir: str = None, ckp_metric: str = None, **kwargs
 ) -> None:
 
     step = 0
     best_score = 0
+    train_params = {}
+    
     for epoch in range(epochs):
         _logger.info(f'\nEpoch: {epoch+1}/{epochs}')
+        
+        # for learning loss
+        if 'detach_epoch_ratio' in kwargs.keys():
+            is_detach_lpm = True if epoch > int(epochs * kwargs['detach_epoch_ratio']) else False
+            train_params['is_detach_lpm'] = is_detach_lpm
+        
         train_metrics = train(
             model        = model, 
             dataloader   = trainloader, 
             criterion    = criterion, 
             optimizer    = optimizer, 
             accelerator  = accelerator, 
-            log_interval = log_interval
+            log_interval = log_interval,
+            **train_params
         )
         
         eval_metrics = test(
@@ -528,7 +543,8 @@ def al_run(
             log_interval = log_interval,
             savedir      = savedir if validset != testset else None,
             seed         = seed if validset != testset else None,
-            ckp_metric   = ckp_metric if validset != testset else None
+            ckp_metric   = ckp_metric if validset != testset else None,
+            **cfg.TRAIN.get('params', {})
         )
         
         # save model
