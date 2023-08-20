@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from tqdm.auto import tqdm
 from torch.utils.data import Dataset
 from copy import deepcopy
 from functools import partial
@@ -184,7 +185,7 @@ class LearningLossAL(Strategy):
         loss_pred = []
     
         with torch.no_grad():
-            for batch in dataloader:
+            for batch in tqdm(dataloader, desc='Get loss prediction', leave=False):
                 if len(batch) == 2:
                     # for labeled dataset that contains labels
                     inputs, _ = batch

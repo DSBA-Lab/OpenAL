@@ -1,6 +1,7 @@
 
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 from collections import defaultdict
 from copy import deepcopy
 from torch.utils.data import Dataset, DataLoader, Sampler, SubsetRandomSampler
@@ -114,8 +115,16 @@ class Strategy:
         # predict
         results = defaultdict(list)
         
+        output_desc = []
+        if return_probs:
+            output_desc.append('Probs')
+        if return_embed:
+            output_desc.append('Embed')
+        if return_labels:
+            output_desc.append('Labels')
+            
         with torch.no_grad():
-            for batch in dataloader:
+            for batch in tqdm(dataloader, total=len(dataloader), desc=f"Get outputs [{','.join(output_desc)}]", leave=False):
                 if len(batch) == 2:
                     # for labeled dataset that contains labels
                     inputs, labels = batch
@@ -159,7 +168,7 @@ class Strategy:
         
         mc_probs = []
         # iteration for the number of MC Dropout
-        for _ in range(num_mcdropout):
+        for _ in tqdm(range(num_mcdropout), desc='MC Dropout', leave=False):
             probs = self.get_outputs(model=model, dataloader=dataloader, device=device)['probs']
             mc_probs.append(probs)
             
