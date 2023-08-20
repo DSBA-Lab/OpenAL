@@ -12,10 +12,14 @@ docker pull nvcr.io/nvidia/pytorch:22.12-py3
 
 `requirements.txt`
 
-```bash
-accelerate
+```
+accelerate==0.18.0
 wandb
-torchvision
+torchvision==0.15.0a0
+gradio==3.27.0
+omegaconf
+timm==0.9.2
+seaborn==0.12.2
 ```
 
 
@@ -23,14 +27,14 @@ torchvision
 
 `./query_strategies`
 
-- Random Sampling (baseline)
-- Least Confidence
-- Margin Sampling
-- Entropy Sampling
-- Learning Loss for Active Leanring
-- BALD
-- Badge
-- MeanSTD
-- VarRatio
-- Feature Mixing
-
+1. Random Sampling (baseline)
+2. Least Confidence
+3. Margin Sampling
+4. Entropy Sampling
+5. Learning Loss for Active Leanring (+detach)
+6. BALD
+7. Badge
+8. MeanSTD
+9. VarRatio
+10. Feature Mixing
+11. PT4AL
