@@ -485,7 +485,11 @@ def al_run(
             query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
             
             # clean memory
-            del model, optimizer, scheduler, trainloader, validloader, testloader
+            if cfg.AL.get('continual', False):
+                del optimizer, scheduler, trainloader, validloader, testloader
+            else:
+                del model, optimizer, scheduler, trainloader, validloader, testloader
+                
             accelerator.free_memory()
             
             # update query
@@ -496,7 +500,8 @@ def al_run(
         _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
         
         # build Model
-        model = strategy.init_model()
+        if not cfg.AL.get('continual', False) or r == 0:
+            model = strategy.init_model()
         
         # optimizer
         optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr, **opt_params)
