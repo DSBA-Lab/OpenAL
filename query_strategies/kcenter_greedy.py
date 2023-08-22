@@ -46,6 +46,13 @@ class KCenterGreedy(Strategy):
         # distance matrix between unlabeled and labeled embeddings
         mat = self._distance(embed1=ulb_embed, embed2=lb_embed)
 
+        # greedy selection
+        selected_idx = self.greedy_selection(mat=mat, ulb_embed=ulb_embed)
+        
+        return selected_idx
+
+
+    def greedy_selection(self, mat: torch.Tensor, ulb_embed: torch.Tensor):
         # K-center greedy
         selected_idx = []
         labeled_idx = deepcopy(self.labeled_idx)
@@ -92,3 +99,139 @@ class KCenterGreedy(Strategy):
         mat = ((mat * -2) + (embed1**2).sum(dim=1).unsqueeze(1) + (embed2**2).sum(dim=1).unsqueeze(0)).sqrt()
         
         return mat
+    
+    
+    
+class KCenterGreedyCB(KCenterGreedy):
+    """
+    Class-Balanced Active Learning for Image Classification. WACV 2022
+    """
+    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, 
+                 dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0, lamb: int = 5):
+        
+        # round log
+        self.r = 1
+        
+        # lambda
+        self.lamb = lamb
+        
+        super(KCenterGreedyCB, self).__init__(
+            model       = model,
+            n_query     = n_query, 
+            n_subset    = n_subset,
+            labeled_idx = labeled_idx, 
+            dataset     = dataset,
+            batch_size  = batch_size,
+            num_workers = num_workers
+        )
+        
+    def query(self, model) -> np.ndarray:
+        # unlabeled index
+        unlabeled_idx = self.get_unlabeled_idx()
+        
+        # predict probability and embedding on unlabeled dataset
+        ulb_outputs = self.extract_outputs(
+            model        = model, 
+            sample_idx   = unlabeled_idx, 
+            return_probs = True,
+            return_embed = True
+        )
+        
+        ulb_embed, ulb_probs = ulb_outputs['embed'], ulb_outputs['probs']
+        ulb_embed = ulb_embed.flatten(start_dim=1)
+        
+        # predict probability and embedding on labeled dataset
+        lb_outputs = self.extract_outputs(
+            model         = model, 
+            sample_idx    = np.where(self.labeled_idx==True)[0], 
+            return_probs  = False,
+            return_embed  = True,
+            return_labels = True
+        )
+        
+        lb_embed, lb_labels = lb_outputs['embed'], lb_outputs['labels']
+        lb_embed = lb_embed.flatten(start_dim=1)
+        
+        # distance matrix between unlabeled and labeled embeddings
+        mat = self._distance(embed1=ulb_embed, embed2=lb_embed)
+
+        # greedy selection
+        selected_idx = self.class_balanced_greedy_selection(
+            mat       = mat, 
+            ulb_embed = ulb_embed, 
+            ulb_probs = ulb_probs, 
+            lb_labels = lb_labels,
+            r         = self.r,
+            lamb      = self.lamb
+        )
+        
+        return selected_idx
+    
+    
+    def class_balanced_greedy_selection(self, mat: torch.Tensor, ulb_embed: torch.Tensor, ulb_probs: torch.Tensor, lb_labels: torch.Tensor, r: int, lamb: int):
+        # Class-balance K-center greedy
+        
+        selected_idx = []
+        labeled_idx = deepcopy(self.labeled_idx)
+        
+        # the number of samples per class
+        _, counts = torch.unique(lb_labels, return_counts=True)
+        num_classes = len(counts)
+        
+        # samples required per class
+        num_required = int((sum(counts)+(r*self.n_query))/len(counts)) - counts
+        num_required = torch.clamp(num_required, min=0).unsqueeze(1)
+        
+        # selected unlabeled samples
+        z = torch.zeros(ulb_embed.size(0), dtype=bool)
+        
+        # Q is probs of unlabeled samples
+        q = deepcopy(ulb_probs)
+        
+        pbar = tqdm(range(self.n_query), desc=f"K-center Greedy (CB): {mat.shape}")
+        
+        for _ in pbar:
+            # the number of unlabeled samples
+            ulb_size = ulb_embed.size(0)
+            
+            # nearest distance of unlabeled data wrt labeled data
+            mat_min, _ = mat.min(dim=1) # return (values, indexes), mat_min: (ulb_size, )
+            
+            # repeat num_required as unlabeled size
+            num_required_repeat = torch.tile(input=num_required, dims=(1, ulb_size)) # num_required_repeat: (num classes, ulb_size)
+            
+            # ulb_probs_z is P*z that is marginal probs of selected samples per class
+            ulb_probs_z = torch.tile(input=torch.matmul(ulb_probs.transpose(1,0), z.to(torch.float)), dims=(ulb_size, 1)) # ulb_probs_z: (ulb_size, num_classes)
+            
+            # ||num_required_repeat - q - ulb_probs_z||_1 is L1 loss between num_required_repeat and Q + ulb_probs_z.
+            # Q + ulb_probs_z means selected samples' probs added into unlabeled samples' probs. 
+            # the lower the L1 loss, the more samples are needed for class balance.
+            l1_loss = torch.linalg.norm(num_required_repeat - (q.transpose(1,0) + ulb_probs_z.transpose(1,0)), dim=0, ord=1) # l1_loss: (ulb_size, )
+            
+            # \argmin_z{-mat_min + \frec{\lambda}{num_classes} * l1_loss}. index with largest distance among unlabeled data w.r.t. num_required per class and ulb_probs
+            q_idx_ = (-mat_min + (lamb / num_classes) * l1_loss).argmin().item()
+            
+            # find index from unlabeled pool
+            q_idx = np.arange(len(self.labeled_idx))[labeled_idx==False][q_idx_]
+        
+            # change selected index into unlabeled pool
+            z_idx = np.arange(z.size(0))[z==False][q_idx_]
+            z[z_idx] = True
+            
+            # change selected index into labeled pool
+            labeled_idx[q_idx] = True
+            selected_idx.append(q_idx)
+            
+            # delete selected index from probs of unlabeled samples
+            q = deepcopy(ulb_probs[z==False])
+            
+            # delete selected index from distance matrix
+            mat = torch.cat([mat[:q_idx_] , mat[q_idx_ + 1:]], dim=0)
+            
+            # append selected index into labeled column of distance matrix 
+            ulb_embed, new_dist = self.update_ulb_embed(select_idx=q_idx_, ulb_embed=ulb_embed)
+            mat = torch.cat([mat, new_dist], dim=1)
+            
+            pbar.set_description(f"K-center Greedy (CB): {mat.shape}")
+            
+        return np.array(selected_idx)

@@ -1,0 +1,4 @@
+AL:
+  strategy: KCenterGreedyCB
+  params:
+    lamb: 5
