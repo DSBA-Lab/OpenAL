@@ -73,6 +73,7 @@ def run(cfg):
             n_end              = cfg.AL.n_end,
             n_query            = cfg.AL.n_query,
             n_subset           = cfg.AL.n_subset,
+            sampler_name       = cfg.DATASET.sampler_name,
             init_method        = cfg.AL.init.method,
             init_method_params = cfg.AL.init.get('params', {}),
             trainset           = trainset,
