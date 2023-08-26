@@ -12,6 +12,8 @@ from glob import glob
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from query_strategies import get_target_from_dataset
+
 
 def torch_seed(random_seed):
     torch.manual_seed(random_seed)
@@ -224,14 +226,14 @@ def cal_metric_binary(cm: list or np.ndarray, show: bool = True):
 
 
 def extract_al_results(
-    savedir: str, strategies: list, seed_list: list, model: str, 
-    n_start: int, n_query: int, n_end: int, test: bool = True, binary: bool = False) -> int and dict:
+    savedir: str, exp_names: list, seed_list: list, model: str, 
+    n_start: int, n_query: int, n_end: int, test: bool = True, binary: bool = False, change_names: dict = None) -> int and dict:
     """
     Extract active learning results
     
     Args:
     - savedir (str): saved result directory
-    - strategies (list): strategies for active learning
+    - exp_names (list): experiment names for active learning
     - seed_list (list): seed list
     - model (str): model name
     - n_start (int): the number of initial samples for active learning
@@ -239,6 +241,7 @@ def extract_al_results(
     - n_end (int): the number of end samples for active learning
     - test (bool): use test results or not. if not, use best validation results
     - binary (bool): use binary results of not
+    - change_names (dict): dictionary for mapping experiment names to new names
     
     Returns:
     - total_round (int): total round for active learning
@@ -248,7 +251,7 @@ def extract_al_results(
     
     Example:
     
-    al_list = [
+    exp_names = [
         'RandomSampling',
         'EntropySampling',
         'MarginSampling',
@@ -263,15 +266,15 @@ def extract_al_results(
 
     # get results
     total_round, r = extract_al_results(
-        savedir    = savedir,
-        strategies = strategies,
-        seed_list  = seed_list,
-        model      = model,
-        n_start    = n_start,
-        n_query    = n_query,
-        n_end      = n_end,
-        test       = test,
-        binary     = binary
+        savedir   = savedir,
+        exp_names = exp_names,
+        seed_list = seed_list,
+        model     = model,
+        n_start   = n_start,
+        n_query   = n_query,
+        n_end     = n_end,
+        test      = test,
+        binary    = binary
     )
     """
     
@@ -279,8 +282,8 @@ def extract_al_results(
     total_round = int((n_end-n_start)/n_query)
     
     # get results
-    r = defaultdict(list)
-    for s in strategies:
+    r = {}
+    for i, exp in enumerate(exp_names):
 
         df_all = pd.DataFrame()
 
@@ -298,10 +301,11 @@ def extract_al_results(
                 al_filename += '.csv'            
             
             # get result
-            f = os.path.join(
-                savedir, model, s,
+            p = os.path.join(
+                savedir, model, '*', exp,
                 f'total_{n_end}-init_{n_start}-query_{n_query}', f'seed{seed}', al_filename
             )
+            f = glob(p)[0]
             
             if not binary:
                 df_seed = pd.read_csv(f)
@@ -333,8 +337,11 @@ def extract_al_results(
             df_all = pd.concat([df_all, df_seed], axis=0)
 
         # add strategy column
-        df_all['strategy'] = s
-        r[s] = df_all
+        if change_names is not None:
+            if exp in change_names.keys():
+                exp = change_names[exp]
+        df_all['strategy'] = exp
+        r[exp] = df_all
         
     return total_round, r
 
@@ -401,7 +408,7 @@ def extract_full_results(
                 full_filename += '.json'   
             
             # get results
-            full_s = json.load(open(os.path.join(savedir, model, f, full_filename), 'r'))
+            full_s = json.load(open(os.path.join(savedir, model, 'Full', f, full_filename), 'r'))
             
             if not test:
                 del full_s['best_step']
@@ -421,15 +428,15 @@ def extract_full_results(
 
 
 def comparison_strategy(
-    savedir: str, strategies: list, fullname_list: list, seed_list: list, model: str, 
+    savedir: str, exp_names: list, fullname_list: list, seed_list: list, model: str, 
     n_start: int, n_query: int, n_end: int, 
-    savepath: str = None, figsize: tuple = (7,10), test: bool = True, binary: bool = False) -> dict:
+    savepath: str = None, figsize: tuple = (7,10), test: bool = True, binary: bool = False, change_names: dict = None) -> dict:
     """
     Comparison strategies results using figure
     
     Args:
     - savedir (str): saved result directory
-    - strategies (list): strategies for active learning
+    - exp_names (list): experiment names for active learning
     - fullname_list (list): full images supervised learning experiment foldernames
     - seed_list (list): seed list
     - model (str): model name
@@ -438,6 +445,7 @@ def comparison_strategy(
     - n_end (int): the number of end samples for active learning
     - test (bool): use test results or not. if not, use best validation results
     - binary (bool): use binary results of not
+    - change_names (dict): dictionary for mapping experiment names to new names
     
     Return:
     - r (dict): active learning results data frame by strategies
@@ -446,7 +454,7 @@ def comparison_strategy(
     
     Example:
     
-    al_list = [
+    exp_names = [
         'RandomSampling',
         'EntropySampling',
         'MarginSampling',
@@ -468,7 +476,7 @@ def comparison_strategy(
 
     results = comparison_strategy(
         savedir       = savedir,
-        strategies    = al_list,
+        exp_names     = exp_names,
         fullname_list = fullname_list,
         seed_list     = seed_list,
         model         = model,
@@ -483,15 +491,16 @@ def comparison_strategy(
 
     # get results
     total_round, r = extract_al_results(
-        savedir    = savedir,
-        strategies = strategies,
-        seed_list  = seed_list,
-        model      = model,
-        n_start    = n_start,
-        n_query    = n_query,
-        n_end      = n_end,
-        test       = test,
-        binary     = binary
+        savedir      = savedir,
+        exp_names    = exp_names,
+        seed_list    = seed_list,
+        model        = model,
+        n_start      = n_start,
+        n_query      = n_query,
+        n_end        = n_end,
+        test         = test,
+        binary       = binary,
+        change_names = change_names
     )
     
             
@@ -634,8 +643,8 @@ def comparison_aubc(results: dict) -> pd.DataFrame:
     return table
 
 def query_frequency(
-    strategy: str, train_path: str, savedir: str, model: str, 
-    n_start: int, n_query: int, n_end: int, seed: int, figsize: tuple = (10,3)
+    exp_names: list, savedir: str, model: str, 
+    n_start: int, n_query: int, n_end: int, seed: int, change_names: dict = None, figsize: tuple = (10,3)
 ):
     """
     Query frequency per class
@@ -683,31 +692,64 @@ def query_frequency(
     )
     """
     
-    p = os.path.join(
-        savedir, model, strategy, 
-        f'total_{n_end}-init_{n_start}-query_{n_query}', f'seed{seed}', 'query_log.csv'
+    # load saved config
+    cfg_path = os.path.join(
+        savedir, model, '*', exp_names[0], 
+        f'total_{n_end}-init_{n_start}-query_{n_query}', 'seed0', 'configs.yaml'
     )
+    cfg_path = glob(cfg_path)[0]
+    cfg = OmegaConf.load(cfg_path)
 
-    log = pd.read_csv(p)
-    train = pd.read_csv(train_path)
+    # load dataset
+    if f"load_{cfg.DATASET.dataname.lower()}" in __import__('datasets').__dict__.keys():
+        trainset, _ = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
+            datadir  = cfg.DATASET.datadir, 
+            img_size = cfg.DATASET.img_size,
+            mean     = cfg.DATASET.mean, 
+            std      = cfg.DATASET.std,
+            aug_info = cfg.DATASET.aug_info,
+            **cfg.DATASET.get('params', {})
+        )
+        labels = get_target_from_dataset(trainset)
+        
+    else:
+        trainset = pd.read_csv(os.path.join(cfg.DATASET.datadir, cfg.DATASET.dataname, f'train_seed{cfg.DATASET.seed}.csv'))
+        labels = trainset.label.values
+    
+    # load query logs
+    query_results = {}
+    for exp in exp_names:    
+        p = os.path.join(
+            savedir, model, '*', exp, 
+            f'total_{n_end}-init_{n_start}-query_{n_query}', f'seed{seed}', 'query_log.csv'
+        )
+        
+        query_path = glob(p)[0]
 
-    # concat log with train info
-    df = pd.concat([train, log], axis=1)
+        # load query log
+        df = pd.read_csv(query_path)
+        df['label'] = labels
 
-    # filtering NaN
-    df = df[~df.query_round.isna()]
+        # filtering NaN
+        df = df[~df.query_round.isna()]
 
-    # calculate class frequency per round
-    df_round = df.groupby(['label','query_round']).idx.count().reset_index()
+        # calculate class frequency per round
+        df_round = df.groupby(['label','query_round']).idx.count().reset_index()
 
-    fig, ax = plt.subplots(1,2,figsize=figsize)
+        # update
+        if change_names is not None:
+            if exp in change_names.keys():
+                exp = change_names[exp]
+                
+        query_results[exp] = df_round
+        
+    fig, ax = plt.subplots(1, len(exp_names)+1, figsize=figsize)
 
     # init frequency
-    df_init = df_round[df_round.query_round=='round0']
+    label_id, label_cnt = np.unique(labels, return_counts=True)
     ax[0] = sns.barplot(
-        x    = 'label',
-        y    = 'idx',
-        data = df_init,
+        x    = label_id,
+        y    = label_cnt,
         ax   = ax[0]
     )
     ax[0].set_ylabel('Frequency')
@@ -716,25 +758,22 @@ def query_frequency(
     for container in ax[0].containers:
         ax[0].bar_label(container, fmt='%d', size=13)
 
+
     # query frequency
-    df_query = pd.merge(
-        pd.DataFrame({'label':df.label.unique()}),
-        df_round[df_round.query_round!='round0'].groupby('label').idx.sum().reset_index(),
-        on = 'label',
-        how = 'left'
-    )
-    df_query = df_query.fillna(0)
-    ax[1] = sns.barplot(
-        x    = 'label',
-        y    = 'idx',
-        data = df_query,
-        ax   = ax[1]
-    )
-    ax[1].set_ylabel('Frequency')
-    ax[1].set_xlabel('Class')
-    ax[1].set_title('Query')
-    for container in ax[1].containers:
-        ax[1].bar_label(container, fmt='%d', size=13)
+    for i, (name, q_r) in enumerate(query_results.items()):
+        df_query = q_r[q_r.query_round!='round0'].groupby('label').idx.sum().reset_index()
+        
+        ax[i+1] = sns.barplot(
+            x    = 'label',
+            y    = 'idx',
+            data = df_query,
+            ax   = ax[i+1]
+        )
+        ax[i+1].set_ylabel('Frequency')
+        ax[i+1].set_xlabel('Class')
+        ax[i+1].set_title(name)
+        for container in ax[i+1].containers:
+            ax[i+1].bar_label(container, fmt='%d', size=13)
         
     plt.tight_layout()
     plt.show()
@@ -852,5 +891,90 @@ def comparison_per_class(
         lines, labels, ncol=4, loc='lower center', bbox_to_anchor=(0.5, 0.98), 
         frameon=False, fontsize=15, 
     )
+    plt.tight_layout()
+    plt.show()
+    
+    
+def strategy_cumsum(
+    exp_name: str, savedir: str, modelname: str, targets: list,
+    n_end: int, n_start: int, n_query: int):
+    # query log
+    query_path = os.path.join(
+        savedir, modelname, '*', exp_name, 
+        f'total_{n_end}-init_{n_start}-query_{n_query}', 'seed0', 'query_log.csv'
+    )
+    query_path = glob(query_path)[0]
+    
+    query_log = pd.read_csv(query_path)
+    query_log['targets'] = targets
+    query_log_notna = query_log[~query_log['query_round'].isna()]
+    query_log_gp = query_log_notna.groupby(['query_round','targets']).count().reset_index()
+    query_log_gp['cumsum'] = query_log_gp.groupby(['targets'])['idx'].cumsum()
+    
+    return query_log_gp
+
+def figure_query_cumsum(
+    exp_names: list, modelname: str, savedir: str, 
+    n_end: int, n_start: int, n_query: int, figsize: tuple, change_names: dict = None):
+    
+    # load saved config
+    cfg_path = os.path.join(
+        savedir, modelname, '*', exp_names[0], 
+        f'total_{n_end}-init_{n_start}-query_{n_query}', 'seed0', 'configs.yaml'
+    )
+    cfg_path = glob(cfg_path)[0]
+    cfg = OmegaConf.load(cfg_path)
+
+    # load dataset
+    trainset, _ = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
+        datadir  = cfg.DATASET.datadir, 
+        img_size = cfg.DATASET.img_size,
+        mean     = cfg.DATASET.mean, 
+        std      = cfg.DATASET.std,
+        aug_info = cfg.DATASET.aug_info,
+        **cfg.DATASET.get('params', {})
+    )
+    targets = get_target_from_dataset(trainset)
+    
+    # get cumsum results
+    cumsum_results = []
+    for exp in exp_names:
+        r = strategy_cumsum(
+            exp_name  = exp,
+            savedir   = savedir,
+            modelname = modelname,
+            targets   = targets,
+            n_end     = n_end,
+            n_start   = n_start,
+            n_query   = n_query
+        )
+        cumsum_results.append(r)
+
+    # total round
+    total_round = int((n_end - n_start) / n_query) + 1    
+    
+    fig, ax = plt.subplots(len(cumsum_results), total_round, figsize=figsize)
+
+    y_max = max([r['cumsum'].max() for r in cumsum_results])
+    for row, s in enumerate(cumsum_results):
+        for round_i in range(total_round):
+            sns.barplot(
+                x    = 'targets',
+                y    = 'cumsum',
+                data = s[s.query_round == f'round{round_i}'],
+                ax   = ax[row, round_i]
+            )
+            ax[row, round_i].set_ylim([0, y_max])
+            ax[row, round_i].set_xlabel('Class')
+            
+            if round_i == 0:
+                if change_names is not None:
+                    if exp in change_names.keys():
+                        exp = change_names[exp]
+                        
+                ylabel = f'{exp}\ncumsum'
+            else:
+                ylabel = 'cumsum'
+            ax[row, round_i].set_ylabel(ylabel)
     plt.tight_layout()
     plt.show()

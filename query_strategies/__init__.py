@@ -11,4 +11,4 @@ from .meanstd_sampling import MeanSTDSampling
 from .varratio_sampling import VarRatioSampling
 from .kcenter_greedy import KCenterGreedy, KCenterGreedyCB
 from .factory import create_query_strategy
-from .make_startset import create_labeled_index, random_select, stratified_random_select, batch_select, get_batch_params
+from .make_startset import create_labeled_index, random_select, stratified_random_select, batch_select, get_batch_params, get_target_from_dataset
