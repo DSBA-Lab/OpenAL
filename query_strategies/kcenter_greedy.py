@@ -6,18 +6,9 @@ from tqdm.auto import tqdm
 from .strategy import Strategy
 
 class KCenterGreedy(Strategy):
-    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, 
-                 dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0):
+    def __init__(self, **init_args):
         
-        super(KCenterGreedy, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+        super(KCenterGreedy, self).__init__(**init_args)
         
     def query(self, model) -> np.ndarray:
         # unlabeled index
@@ -106,8 +97,7 @@ class KCenterGreedyCB(KCenterGreedy):
     """
     Class-Balanced Active Learning for Image Classification. WACV 2022
     """
-    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, 
-                 dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0, lamb: int = 5):
+    def __init__(self, lamb: int = 5, **init_params):
         
         # round log
         self.r = 1
@@ -115,15 +105,7 @@ class KCenterGreedyCB(KCenterGreedy):
         # lambda
         self.lamb = lamb
         
-        super(KCenterGreedyCB, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+        super(KCenterGreedyCB, self).__init__(**init_params)
         
     def query(self, model) -> np.ndarray:
         # unlabeled index

@@ -57,7 +57,7 @@ def parser():
             OmegaConf.update(cfg, k, convert_type(v), merge=True)
        
     # load dataset statistics
-    cfg.DATASET.update(stats.datasets[cfg.DATASET.dataname])
+    cfg.DATASET.update(stats.datasets[cfg.DATASET.name])
     
     # update stategy configs
     cfg = update_stategy_cfg(cfg)

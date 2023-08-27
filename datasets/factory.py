@@ -120,24 +120,53 @@ def load_tiny_imagenet_200(datadir: str, img_size: int, mean: tuple, std: tuple,
 
     return trainset, testset
     
-
-def create_dataset(
-    datadir: str, dataname: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, seed: int = 42
-):
+def load_al_dataset(dataname: str, datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, seed: int = 42):
     trainset = ALDataset(
-        datadir   = os.path.join(datadir,dataname),
+        datadir   = os.path.join(datadir, dataname),
         name      = f'train_seed{seed}.csv',
         transform = train_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
     )
     validset = ALDataset(
-        datadir   = os.path.join(datadir,dataname), 
+        datadir   = os.path.join(datadir, dataname), 
         name      = f'validation_seed{seed}.csv',
         transform = test_augmentation(img_size=img_size, mean=mean, std=std)
     )
     testset = ALDataset(
-        datadir   = os.path.join(datadir,dataname), 
+        datadir   = os.path.join(datadir, dataname), 
         name      = f'test_seed{seed}.csv',
         transform = test_augmentation(img_size=img_size, mean=mean, std=std)
     )
     
-    return trainset, validset, testset    
+    return trainset, validset, testset
+
+
+def create_dataset(
+    datadir: str, dataname: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, **params
+):
+   
+    if f"load_{dataname.lower()}" in __import__(__name__).__dict__.keys():
+        # benchmark datasets
+        trainset, testset = eval(f"load_{dataname.lower()}")(
+            datadir  = datadir, 
+            img_size = img_size,
+            mean     = mean, 
+            std      = std,
+            aug_info = aug_info,
+            **params
+        )
+        
+        validset = testset
+        
+    else:
+        # user custom datasets
+        trainset, validset, testset = load_al_dataset(
+            datadir  = datadir, 
+            dataname = dataname,
+            img_size = img_size,
+            mean     = mean,
+            std      = std,
+            aug_info = aug_info,
+            **params
+        )
+    
+    return trainset, validset, testset

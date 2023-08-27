@@ -4,7 +4,6 @@ DEFAULT:
 DATASET:
   datadir: /datasets
   dataname: SamsungAL
-  seed: 42
   batch_size: 128
   test_batch_size: 128
   num_workers: 12
@@ -13,13 +12,15 @@ DATASET:
     - RandomHorizontalFlip
     - RandomVerticalFlip
     - Resize
+  params:
+    seed: 42
 OPTIMIZER:
-  opt_name: AdamW
+  name: AdamW
   lr: 0.00001
   params:
     weight_decay: 0.00001
 SCHEDULER:
-  sched_name: cosine_annealing
+  name: cosine_annealing
   params:
     t_mult: 1
     eta_min: 0.00001
@@ -34,7 +35,7 @@ TRAIN:
     entity: dsba-al-2023
     project_name: Active Learning - SamsungAL
 MODEL:
-  modelname: swin_base_patch4_window7_224.ms_in22k
+  name: swin_base_patch4_window7_224.ms_in22k
   pretrained: true
 AL:
   n_start: 5000

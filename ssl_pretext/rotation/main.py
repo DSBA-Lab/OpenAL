@@ -96,7 +96,7 @@ def batch_stack(batch):
 
 def run(cfg):
     # save directory
-    savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, cfg.DEFAULT.exp_name)
+    savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, cfg.DEFAULT.exp_name)
     assert not os.path.isdir(savedir), f'{savedir} already exists'
     os.makedirs(savedir)
     
@@ -114,8 +114,8 @@ def run(cfg):
     torch_seed(cfg.DEFAULT.seed)
     
     # load dataset
-    if f"load_{cfg.DATASET.dataname.lower()}" in __import__('datasets').__dict__.keys():
-        trainset, validset = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
+    if f"load_{cfg.DATASET.name.lower()}" in __import__('datasets').__dict__.keys():
+        trainset, validset = __import__('datasets').__dict__[f"load_{cfg.DATASET.name.lower()}"](
             datadir  = cfg.DATASET.datadir, 
             img_size = cfg.DATASET.img_size,
             mean     = cfg.DATASET.mean, 
@@ -125,7 +125,7 @@ def run(cfg):
     else:
         trainset, validset, _ = create_dataset(
             datadir  = cfg.DATASET.datadir, 
-            dataname = cfg.DATASET.dataname,
+            dataname = cfg.DATASET.name,
             img_size = cfg.DATASET.img_size,
             mean     = cfg.DATASET.mean,
             std      = cfg.DATASET.std,
@@ -169,7 +169,7 @@ def run(cfg):
     # load model
     cfg.DATASET.num_classes = 4 # 4 is the number of rotation angles
     model = create_model(
-        modelname   = cfg.MODEL.modelname, 
+        modelname   = cfg.MODEL.name, 
         num_classes = cfg.DATASET.num_classes, 
         img_size    = cfg.DATASET.img_size, 
         pretrained  = cfg.MODEL.pretrained
@@ -179,7 +179,7 @@ def run(cfg):
     criterion = nn.CrossEntropyLoss()
     
     # optimizer
-    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.opt_name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
     
     # scheduler
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30, 60, 90])

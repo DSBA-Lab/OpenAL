@@ -301,11 +301,7 @@ def fit(
 
 
 def full_run(
-    modelname: str, pretrained: bool,
-    trainset, validset, testset,
-    img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
-    opt_name: str, lr: float, opt_params: dict, sched_name: str, sched_params: dict, 
-    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None):
+    cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
     
     # logging
     _logger.info('Full Supervised Learning, [total samples] {}'.format(len(trainset)))
@@ -313,40 +309,40 @@ def full_run(
     # define train dataloader
     trainloader = DataLoader(
         dataset     = trainset,
-        batch_size  = batch_size,
+        batch_size  = cfg.DATASET.batch_size,
         shuffle     = True,
-        num_workers = num_workers
+        num_workers = cfg.DATASET.num_workers
     )
     
     # define test dataloader
     validloader = DataLoader(
         dataset     = validset,
-        batch_size  = test_batch_size,
+        batch_size  = cfg.DATASET.test_batch_size,
         shuffle     = False,
-        num_workers = num_workers
+        num_workers = cfg.DATASET.num_workers
     )
     
     # define test dataloader
     testloader = DataLoader(
         dataset     = testset,
-        batch_size  = test_batch_size,
+        batch_size  = cfg.DATASET.test_batch_size,
         shuffle     = False,
-        num_workers = num_workers
+        num_workers = cfg.DATASET.num_workers
     )
 
     # load model
     model = create_model(
-        modelname   = modelname, 
-        num_classes = num_classes, 
-        img_size    = img_size, 
-        pretrained  = pretrained
+        modelname   = cfg.MODEL.name, 
+        num_classes = cfg.DATASET.num_classes, 
+        img_size    = cfg.DATASET.img_size, 
+        pretrained  = cfg.MODEL.pretrained
     )
     
     # optimizer
-    optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr, **opt_params)
+    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
 
     # scheduler
-    scheduler = create_scheduler(sched_name=sched_name, optimizer=optimizer, epochs=epochs, params=sched_params)
+    scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
 
     # criterion 
     criterion = torch.nn.CrossEntropyLoss()
@@ -365,56 +361,76 @@ def full_run(
         optimizer    = optimizer, 
         scheduler    = scheduler,
         accelerator  = accelerator,
-        epochs       = epochs, 
-        use_wandb    = use_wandb,
-        log_interval = log_interval,
+        epochs       = cfg.TRAIN.epochs, 
+        use_wandb    = cfg.TRAIN.wandb.use,
+        log_interval = cfg.TRAIN.log_interval,
         savedir      = savedir if validset != testset else None,
-        seed         = seed if validset != testset else None,
-        ckp_metric   = ckp_metric if validset != testset else None
+        seed         = cfg.DEFAULT.seed if validset != testset else None,
+        ckp_metric   = cfg.TRAIN.ckp_metric if validset != testset else None
     )
     
     # save model
-    torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+    torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}.pt"))
     
     if validset != testset:
         # load best checkpoint 
-        model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
+        model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{cfg.DEFAULT.seed}_best.pt')))
 
+
+    # ====================
+    # validation results
+    # ====================
+    
+    eval_results = test(
+        model            = model, 
+        dataloader       = validloader, 
+        criterion        = criterion, 
+        log_interval     = cfg.TRAIN.log_interval,
+        return_per_class = True
+    )
+
+    # save results per class
+    json.dump(
+        obj    = eval_results['per_class'], 
+        fp     = open(os.path.join(savedir, f"results-seed{cfg.DEFAULT.seed}_best-per_class.json"), 'w'), 
+        cls    = MyEncoder,
+        indent = '\t'
+    )
+    del eval_results['per_class']
+
+    # save results
+    json.dump(eval_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}_best.json'), 'w'), indent='\t')
+    
+
+    # ====================
     # test results
+    # ====================
+    
     test_results = test(
         model            = model, 
         dataloader       = testloader, 
         criterion        = criterion, 
-        log_interval     = log_interval,
+        log_interval     = cfg.TRAIN.log_interval,
         return_per_class = True
     )
 
     # save results per class
     json.dump(
         obj    = test_results['per_class'], 
-        fp     = open(os.path.join(savedir, f"results-seed{seed}-per_class.json"), 'w'), 
+        fp     = open(os.path.join(savedir, f"results-seed{cfg.DEFAULT.seed}-per_class.json"), 'w'), 
         cls    = MyEncoder,
         indent = '\t'
     )
     del test_results['per_class']
 
     # save results
-    json.dump(test_results, open(os.path.join(savedir, f'results-seed{seed}.json'), 'w'), indent='\t')
+    json.dump(test_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}.json'), 'w'), indent='\t')
     
 
-def al_run(
-    exp_name: str, modelname: str, pretrained: bool,
-    strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, sampler_name: str,
-    init_method: str, init_method_params: dict,
-    trainset, validset, testset,
-    img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
-    opt_name: str, lr: float, opt_params: dict, sched_name: str, sched_params: dict,
-    epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None, cfg: dict = None):
-    
-    assert cfg != None if use_wandb else True, 'If you use wandb, configs should be exist.'
-    
+def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
+
     # set active learning arguments
-    nb_round = (n_end - n_start)/n_query
+    nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
     
     if nb_round % int(nb_round) != 0:
         nb_round = int(nb_round) + 1
@@ -422,38 +438,44 @@ def al_run(
         nb_round = int(nb_round)
     
     # logging
-    _logger.info('[total samples] {}, [initial samples] {} [qeury samples] {} [end samples] {} [total round] {}'.format(
-        len(trainset), n_start, n_query, n_end, nb_round))
+    _logger.info('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {}'.format(
+        len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round))
     
     # inital sampling labeling
     labeled_idx = create_labeled_index(
-        method   = init_method,
+        method   = cfg.AL.init.method,
         trainset = trainset,
-        size     = n_start,
-        seed     = seed,
-        **init_method_params
+        size     = cfg.AL.n_start,
+        seed     = cfg.DEFAULT.seed,
+        **cfg.AL.init.get('params', {})
     )
     
     # select strategy    
     strategy = create_query_strategy(
-        strategy_name = strategy, 
-        model         = create_model(modelname=modelname, num_classes=num_classes, img_size=img_size, pretrained=pretrained, **cfg.MODEL.get('params',{})),
+        strategy_name = cfg.AL.strategy, 
+        model         = create_model(
+                modelname   = cfg.MODEL.name,
+                num_classes = cfg.DATASET.num_classes, 
+                img_size    = cfg.DATASET.img_size, 
+                pretrained  = cfg.MODEL.pretrained, 
+                **cfg.MODEL.get('params',{})
+            ),
         dataset       = trainset, 
-        sampler_name  = sampler_name,
+        sampler_name  = cfg.DATASET.sampler_name,
         labeled_idx   = labeled_idx, 
-        n_query       = n_query, 
-        n_subset      = n_subset,
-        batch_size    = batch_size, 
-        num_workers   = num_workers,
+        n_query       = cfg.AL.n_query, 
+        n_subset      = cfg.AL.n_subset,
+        batch_size    = cfg.DATASET.batch_size, 
+        num_workers   = cfg.DATASET.num_workers,
         params        = cfg.AL.get('params', {})
     )
     
     # define train dataloader
     trainloader = DataLoader(
         dataset     = trainset,
-        batch_size  = batch_size,
-        sampler     = SubsetRandomSampler(indices=np.where(labeled_idx==True)[0]),
-        num_workers = num_workers
+        batch_size  = cfg.DATASET.batch_size,
+        sampler     = strategy.select_sampler(indices=np.where(labeled_idx==True)[0]),
+        num_workers = cfg.DATASET.num_workers
     )
     
     
@@ -486,10 +508,9 @@ def al_run(
             query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
             
             # clean memory
-            if cfg.AL.get('continual', False):
-                del optimizer, scheduler, trainloader, validloader, testloader
-            else:
-                del model, optimizer, scheduler, trainloader, validloader, testloader
+            del optimizer, scheduler, trainloader, validloader, testloader
+            if not cfg.AL.continual:
+                del model
                 
             accelerator.free_memory()
             
@@ -505,25 +526,25 @@ def al_run(
             model = strategy.init_model()
         
         # optimizer
-        optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](model.parameters(), lr=lr, **opt_params)
+        optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
 
         # scheduler
-        scheduler = create_scheduler(sched_name=sched_name, optimizer=optimizer, epochs=epochs, params=sched_params)
+        scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
 
         # define test dataloader
         validloader = DataLoader(
             dataset     = validset,
-            batch_size  = test_batch_size,
+            batch_size  = cfg.DATASET.test_batch_size,
             shuffle     = False,
-            num_workers = num_workers
+            num_workers = cfg.DATASET.num_workers
         )
         
         # define test dataloader
         testloader = DataLoader(
             dataset     = testset,
-            batch_size  = test_batch_size,
+            batch_size  = cfg.DATASET.test_batch_size,
             shuffle     = False,
-            num_workers = num_workers
+            num_workers = cfg.DATASET.num_workers
         )
         
         # prepraring accelerator
@@ -532,8 +553,8 @@ def al_run(
         )
         
         # initialize wandb
-        if use_wandb:
-            wandb.init(name=f'{exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
+        if cfg.TRAIN.wandb.use:
+            wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
         # fitting model
         fit(
@@ -544,21 +565,21 @@ def al_run(
             optimizer    = optimizer, 
             scheduler    = scheduler,
             accelerator  = accelerator,
-            epochs       = epochs, 
-            use_wandb    = use_wandb,
-            log_interval = log_interval,
+            epochs       = cfg.TRAIN.epochs, 
+            use_wandb    = cfg.TRAIN.wandb.use,
+            log_interval = cfg.TRAIN.log_interval,
             savedir      = savedir if validset != testset else None,
-            seed         = seed if validset != testset else None,
-            ckp_metric   = ckp_metric if validset != testset else None,
+            seed         = cfg.DEFAULT.seed if validset != testset else None,
+            ckp_metric   = cfg.TRAIN.ckp_metric if validset != testset else None,
             **cfg.TRAIN.get('params', {})
         )
         
         # save model
-        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{seed}.pt"))
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}.pt"))
 
         # load best checkpoint 
         if validset != testset:
-            model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{seed}_best.pt')))
+            model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{cfg.DEFAULT.seed}_best.pt')))
 
         
         # ====================
@@ -569,7 +590,7 @@ def al_run(
             model            = model, 
             dataloader       = validloader, 
             criterion        = strategy.loss_fn, 
-            log_interval     = log_interval,
+            log_interval     = cfg.TRAIN.log_interval,
             return_per_class = True,
             name             = 'VALID'
         )
@@ -580,7 +601,7 @@ def al_run(
         })
         json.dump(
             obj    = metrics_log_eval, 
-            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{seed}_best-per_class.json"), 'w'), 
+            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_best-per_class.json"), 'w'), 
             cls    = MyEncoder,
             indent = '\t'
         )
@@ -593,7 +614,7 @@ def al_run(
         log_df_valid = pd.concat([log_df_valid, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
         
         log_df_valid.round(4).to_csv(
-            os.path.join(savedir, f"round{nb_round}-seed{seed}_best.csv"),
+            os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_best.csv"),
             index=False
         )   
 
@@ -605,7 +626,7 @@ def al_run(
             model            = model, 
             dataloader       = testloader, 
             criterion        = strategy.loss_fn, 
-            log_interval     = log_interval,
+            log_interval     = cfg.TRAIN.log_interval,
             return_per_class = True
         )
 
@@ -615,7 +636,7 @@ def al_run(
         })
         json.dump(
             obj    = metrics_log_test, 
-            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{seed}-per_class.json"), 'w'), 
+            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}-per_class.json"), 'w'), 
             cls    = MyEncoder,
             indent = '\t'
         )
@@ -628,7 +649,7 @@ def al_run(
         log_df_test = pd.concat([log_df_test, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
         
         log_df_test.round(4).to_csv(
-            os.path.join(savedir, f"round{nb_round}-seed{seed}.csv"),
+            os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}.csv"),
             index=False
         )   
         

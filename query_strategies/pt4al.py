@@ -6,8 +6,7 @@ from query_strategies import LeastConfidence, MarginSampling, EntropySampling
 from .make_startset import get_batch_params
 
 class PT4AL:
-    def __init__(
-        self, n_query: int, n_start: int, n_end: int, batch_path: str):
+    def __init__(self, n_query: int, n_start: int, n_end: int, batch_path: str):
         
         # round log
         self.r = 1
@@ -43,67 +42,40 @@ class PT4AL:
     
     
 class PT4LeastConfidence(PT4AL, LeastConfidence):
-    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, dataset: Dataset, batch_size: int, num_workers: int, 
-        n_start: int, n_end: int, batch_path: str, n_subset: int = 0):
+    def __init__(self, batch_path: str, **init_args):
         
         super(PT4LeastConfidence, self).__init__(
-            n_query    = n_query, 
-            n_start    = n_start, 
-            n_end      = n_end, 
+            n_query    = init_args['n_query'], 
+            n_start    = init_args['n_start'], 
+            n_end      = init_args['n_end'], 
             batch_path = batch_path
         )
         
-        super(LeastConfidence, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+        super(LeastConfidence, self).__init__(**init_args)
         
     
     
 class PT4MarginSampling(PT4AL, MarginSampling):
-    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, dataset: Dataset, batch_size: int, num_workers: int, 
-        n_start: int, n_end: int, batch_path: str, n_subset: int = 0):
+    def __init__(self, batch_path: str, **init_args):
         
         super(PT4MarginSampling, self).__init__(
-            n_query    = n_query, 
-            n_start    = n_start, 
-            n_end      = n_end, 
+            n_query    = init_args['n_query'], 
+            n_start    = init_args['n_start'], 
+            n_end      = init_args['n_end'], 
             batch_path = batch_path
         )
         
-        super(MarginSampling, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+        super(MarginSampling, self).__init__(**init_args)
         
 
 class PT4EntropySampling(PT4AL, EntropySampling):
-    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, dataset: Dataset, batch_size: int, num_workers: int, 
-        n_start: int, n_end: int, batch_path: str, n_subset: int = 0):
+    def __init__(self, batch_path: str, **init_args):
         
         super(PT4EntropySampling, self).__init__(
-            n_query    = n_query, 
-            n_start    = n_start, 
-            n_end      = n_end, 
+            n_query    = init_args['n_query'], 
+            n_start    = init_args['n_start'], 
+            n_end      = init_args['n_end'], 
             batch_path = batch_path
         )
         
-        super(EntropySampling, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+        super(EntropySampling, self).__init__(**init_args)

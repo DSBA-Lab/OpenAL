@@ -30,19 +30,19 @@ def run(cfg):
     # load dataset
     trainset, validset, testset = create_dataset(
         datadir  = cfg.DATASET.datadir, 
-        dataname = cfg.DATASET.dataname,
+        dataname = cfg.DATASET.name,
         img_size = cfg.DATASET.img_size,
         mean     = cfg.DATASET.mean,
         std      = cfg.DATASET.std,
         aug_info = cfg.DATASET.aug_info,
-        seed     = cfg.DATASET.seed
+        **cfg.DATASET.get('params', {})
     )
     
     if 'AL' in cfg.keys():
         # make save directory
         al_name = f"total_{cfg.AL.n_end}-init_{cfg.AL.n_start}-query_{cfg.AL.n_query}"
         savedir = os.path.join(
-            cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, 
+            cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 
             cfg.AL.strategy, cfg.DEFAULT.exp_name, al_name, f'seed{cfg.DEFAULT.seed}'
         )
         
@@ -54,42 +54,16 @@ def run(cfg):
         
         # run active learning
         al_run(
-            exp_name           = cfg.DEFAULT.exp_name,
-            modelname          = cfg.MODEL.modelname,
-            pretrained         = cfg.MODEL.pretrained,
-            strategy           = cfg.AL.strategy,
-            n_start            = cfg.AL.n_start,
-            n_end              = cfg.AL.n_end,
-            n_query            = cfg.AL.n_query,
-            n_subset           = cfg.AL.n_subset,
-            sampler_name       = cfg.DATASET.sampler_name,
-            init_method        = cfg.AL.init.method,
-            init_method_params = cfg.AL.init.get('params', {}),
-            trainset           = trainset,
-            validset           = validset,
-            testset            = testset,
-            img_size           = cfg.DATASET.img_size,
-            num_classes        = cfg.DATASET.num_classes,
-            batch_size         = cfg.DATASET.batch_size,
-            test_batch_size    = cfg.DATASET.test_batch_size,
-            num_workers        = cfg.DATASET.num_workers,
-            opt_name           = cfg.OPTIMIZER.opt_name,
-            lr                 = cfg.OPTIMIZER.lr,
-            opt_params         = cfg.OPTIMIZER.get('params',{}),
-            sched_name         = cfg.SCHEDULER.sched_name,
-            sched_params       = cfg.SCHEDULER.params,
-            epochs             = cfg.TRAIN.epochs,
-            log_interval       = cfg.TRAIN.log_interval,
-            use_wandb          = cfg.TRAIN.wandb.use,
-            savedir            = savedir,
-            seed               = cfg.DEFAULT.seed,
-            accelerator        = accelerator,
-            ckp_metric         = cfg.TRAIN.ckp_metric,
-            cfg                = cfg
+            cfg         = cfg,
+            trainset    = trainset,
+            validset    = validset,
+            testset     = testset,
+            savedir     = savedir,
+            accelerator = accelerator,
         )
     else:
         # make save directory
-        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, 'Full', cfg.DEFAULT.exp_name)
+        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 'Full', cfg.DEFAULT.exp_name)
         
         assert not os.path.isdir(savedir), f'{savedir} already exists'
         os.makedirs(savedir)
@@ -103,28 +77,12 @@ def run(cfg):
         
         # run full supervised learning
         full_run(
-            modelname       = cfg.MODEL.modelname,
-            pretrained      = cfg.MODEL.pretrained,
-            trainset        = trainset,
-            validset        = validset,
-            testset         = testset,
-            img_size        = cfg.DATASET.img_size,
-            num_classes     = cfg.DATASET.num_classes,
-            batch_size      = cfg.DATASET.batch_size,
-            test_batch_size = cfg.DATASET.test_batch_size,
-            num_workers     = cfg.DATASET.num_workers,
-            opt_name        = cfg.OPTIMIZER.opt_name,
-            lr              = cfg.OPTIMIZER.lr,
-            opt_params      = cfg.OPTIMIZER.params,
-            sched_name      = cfg.SCHEDULER.sched_name,
-            sched_params    = cfg.SCHEDULER.params,
-            epochs          = cfg.TRAIN.epochs,
-            log_interval    = cfg.TRAIN.log_interval,
-            use_wandb       = cfg.TRAIN.wandb.use,
-            savedir         = savedir,
-            seed            = cfg.DEFAULT.seed,
-            accelerator     = accelerator,
-            ckp_metric      = cfg.TRAIN.ckp_metric
+            cfg         = cfg,
+            trainset    = trainset,
+            validset    = validset,
+            testset     = testset,
+            savedir     = savedir,
+            accelerator = accelerator,
         )
     
 
