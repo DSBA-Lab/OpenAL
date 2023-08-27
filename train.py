@@ -102,12 +102,12 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
 
 
 def get_metrics(metrics: dict, metrics_log: str, targets: list, scores: list, preds: list, return_per_class: str = False):
-    metrics = calc_metrics(
+    metrics.update(calc_metrics(
         y_true           = targets,
         y_score          = scores,
         y_pred           = preds,
         return_per_class = return_per_class
-    )
+    ))
     metrics_log += ' | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % \
                     (100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision'])
 
