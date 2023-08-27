@@ -10,19 +10,9 @@ class VarRatioSampling(Strategy):
     
     VarRatioSampling is the same as LeastConfidence
     '''
-    def __init__(
-        self, model, n_query: int, labeled_idx: np.ndarray, 
-        dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0):
+    def __init__(self, **init_args):
         
-        super(VarRatioSampling, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+        super(VarRatioSampling, self).__init__(**init_args)
         
     def query(self, model) -> np.ndarray:
         # unlabeled index

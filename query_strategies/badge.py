@@ -3,24 +3,15 @@ from scipy import stats
 from copy import deepcopy as deepcopy
 import torch
 import torch.nn.functional as F 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
-from .strategy import Strategy,SubsetSequentialSampler
+from .strategy import Strategy
+from .sampler import SubsetSequentialSampler
 
 class BADGE(Strategy):
-    def __init__(
-        self, model, n_query: int, labeled_idx: np.ndarray,
-        dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0):
+    def __init__(self, **init_args):
         
-        super(BADGE, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )            
+        super(BADGE, self).__init__(**init_args)            
         
     def get_grad_embedding(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:
         # define sampler

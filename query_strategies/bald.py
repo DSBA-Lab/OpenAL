@@ -1,23 +1,12 @@
 import numpy as np
 import torch
-from torch.utils.data import Dataset
 
 from .strategy import Strategy
 
 class BALD(Strategy):
-    def __init__(
-        self, model, n_query: int, labeled_idx: np.ndarray, 
-        dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0, num_mcdropout: int = 10):
+    def __init__(self, num_mcdropout: int = 10, **init_args):
         
-        super(BALD, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+        super(BALD, self).__init__(**init_args)
         
         self.num_mcdropout = num_mcdropout
         

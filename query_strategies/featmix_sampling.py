@@ -7,24 +7,14 @@ from sklearn.cluster import KMeans
 import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.utils.data import Dataset
 
 from .strategy import Strategy
 
 _logger = logging.getLogger('train')
 
 class AlphaMixSampling(Strategy):
-    def __init__(self, model, n_query: int, labeled_idx: np.ndarray, 
-                 dataset: Dataset, batch_size: int, num_workers: int, n_subset: int = 0, alpha_cap: float = 0.03125):
-        super(AlphaMixSampling, self).__init__(
-            model       = model,
-            n_query     = n_query, 
-            n_subset    = n_subset,
-            labeled_idx = labeled_idx, 
-            dataset     = dataset,
-            batch_size  = batch_size,
-            num_workers = num_workers
-        )
+    def __init__(self, alpha_cap: float = 0.03125, **init_args):
+        super(AlphaMixSampling, self).__init__(**init_args)
         
         self.alpha_cap = alpha_cap
         
