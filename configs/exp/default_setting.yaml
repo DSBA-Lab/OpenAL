@@ -44,3 +44,4 @@ AL:
   n_subset: 0
   init:
     method: stratified_random_select
+  continual: false
