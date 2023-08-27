@@ -304,7 +304,7 @@ def full_run(
     modelname: str, pretrained: bool,
     trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
-    opt_name: str, lr: float, opt_params: dict, sched_name: str, sched_params: dict,
+    opt_name: str, lr: float, opt_params: dict, sched_name: str, sched_params: dict, 
     epochs: int, log_interval: int, use_wandb: bool, savedir: str, seed: int, accelerator: Accelerator, ckp_metric: str = None):
     
     # logging
@@ -404,7 +404,7 @@ def full_run(
 
 def al_run(
     exp_name: str, modelname: str, pretrained: bool,
-    strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, 
+    strategy: str, n_start: int, n_end: int, n_query: int, n_subset: int, sampler_name: str,
     init_method: str, init_method_params: dict,
     trainset, validset, testset,
     img_size: int, num_classes: int, batch_size: int, test_batch_size: int, num_workers: int, 
@@ -439,6 +439,7 @@ def al_run(
         strategy_name = strategy, 
         model         = create_model(modelname=modelname, num_classes=num_classes, img_size=img_size, pretrained=pretrained, **cfg.MODEL.get('params',{})),
         dataset       = trainset, 
+        sampler_name  = sampler_name,
         labeled_idx   = labeled_idx, 
         n_query       = n_query, 
         n_subset      = n_subset,

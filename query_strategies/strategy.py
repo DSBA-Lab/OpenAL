@@ -4,23 +4,14 @@ import torch
 from tqdm.auto import tqdm
 from collections import defaultdict
 from copy import deepcopy
-from torch.utils.data import Dataset, DataLoader, Sampler, SubsetRandomSampler
-
-class SubsetSequentialSampler(Sampler):
-    def __init__(self, indices: np.ndarray):
-        self.indices = indices
-
-    def __iter__(self):
-        return (self.indices[i] for i in range(len(self.indices)))
-
-    def __len__(self):
-        return len(self.indices)
-    
+from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
+from .sampler import SubsetSequentialSampler, SubsetWeightedRandomSampler
+from .make_startset import get_target_from_dataset
 
 class Strategy:
     def __init__(
         self, model, n_query: int, dataset: Dataset, labeled_idx: np.ndarray, 
-        batch_size: int, num_workers: int, n_subset: int = 0):
+        batch_size: int, num_workers: int, sampler_name: str, n_subset: int = 0):
         
         self.model = model
         self.n_query = n_query
@@ -29,6 +20,7 @@ class Strategy:
         self.dataset = dataset
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.sampler_name = sampler_name
         
         self.criterion = torch.nn.CrossEntropyLoss()
         
@@ -48,11 +40,29 @@ class Strategy:
         dataloader = DataLoader(
             dataset     = self.dataset,
             batch_size  = self.batch_size,
-            sampler     = SubsetRandomSampler(indices=np.where(self.labeled_idx==True)[0]),
+            sampler     = self.select_sampler(indices=np.where(self.labeled_idx==True)[0]),
             num_workers = self.num_workers
         )
         
         return dataloader
+    
+    def select_sampler(self, indices: np.ndarray):
+        if self.sampler_name == 'SubsetRandomSampler':
+            # sampler
+            sampler = SubsetRandomSampler(indices=indices)
+        elif self.sampler_name == 'SubsetWeightedRandomSampler':
+            # get labels
+            labels = get_target_from_dataset(self.dataset)[self.labeled_idx]
+            
+            # calculate weights per samples
+            _, labels_cnt = np.unique(labels, return_counts=True)
+            labels_weights = 1 - (labels_cnt / labels_cnt.sum())
+            weights = [labels_weights[i] for i in labels]
+            
+            # sampler
+            sampler = SubsetWeightedRandomSampler(indices=indices, weights=weights)
+            
+        return sampler
 
     def subset_sampling(self, indices: np.ndarray, n_subset: int):
         # define subset

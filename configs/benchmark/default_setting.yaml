@@ -6,6 +6,7 @@ DATASET:
   batch_size: 32
   test_batch_size: 2048
   num_workers: 12
+  sampler_name: SubsetRandomSampler
   aug_info:
     - RandomCrop
     - RandomHorizontalFlip

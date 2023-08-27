@@ -35,7 +35,7 @@ def create_labeled_index(method: str, trainset: Dataset, size: int, seed: int, *
 def get_target_from_dataset(dataset):
     # if class name is ALDataset
     if dataset.__class__.__name__ == "ALDataset":
-        targets = dataset.data_info.label.tolist()
+        targets = dataset.data_info.label.values
     else:
        # attribution name list in benchmark dataset class
         target_attrs = ['targets', 'labels'] # TODO: if target attribution name is added, append in this line.
@@ -46,6 +46,8 @@ def get_target_from_dataset(dataset):
             if targets is not False:
                 break
 
+    if not isinstance(targets, np.ndarray):
+        targets = np.array(targets)
     return targets
 
 
