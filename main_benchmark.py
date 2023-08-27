@@ -42,7 +42,7 @@ def run(cfg):
     _logger.info('Device: {}'.format(accelerator.device))
 
     # load dataset
-    trainset, testset = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
+    trainset, testset = __import__('datasets').__dict__[f"load_{cfg.DATASET.name.lower()}"](
         datadir  = cfg.DATASET.datadir, 
         img_size = cfg.DATASET.img_size,
         mean     = cfg.DATASET.mean, 
@@ -55,7 +55,7 @@ def run(cfg):
         # make save directory
         al_name = f"total_{cfg.AL.n_end}-init_{cfg.AL.n_start}-query_{cfg.AL.n_query}"
         savedir = os.path.join(
-            cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, 
+            cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 
             cfg.AL.strategy, cfg.DEFAULT.exp_name, al_name, f'seed{cfg.DEFAULT.seed}'
         )
         os.makedirs(savedir, exist_ok=True)
@@ -74,7 +74,7 @@ def run(cfg):
         )
     else:
         # make save directory
-        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, 'Full', cfg.DEFAULT.exp_name)
+        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 'Full', cfg.DEFAULT.exp_name)
         os.makedirs(savedir, exist_ok=True)
         
         # save configs
@@ -88,7 +88,7 @@ def run(cfg):
         full_run(
             cfg         = cfg,
             trainset    = trainset,
-            validset    = validset,
+            validset    = testset,
             testset     = testset,
             savedir     = savedir,
             accelerator = accelerator,

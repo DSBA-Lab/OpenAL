@@ -701,8 +701,8 @@ def query_frequency(
     cfg = OmegaConf.load(cfg_path)
 
     # load dataset
-    if f"load_{cfg.DATASET.dataname.lower()}" in __import__('datasets').__dict__.keys():
-        trainset, _ = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
+    if f"load_{cfg.DATASET.name.lower()}" in __import__('datasets').__dict__.keys():
+        trainset, _ = __import__('datasets').__dict__[f"load_{cfg.DATASET.name.lower()}"](
             datadir  = cfg.DATASET.datadir, 
             img_size = cfg.DATASET.img_size,
             mean     = cfg.DATASET.mean, 
@@ -713,7 +713,7 @@ def query_frequency(
         labels = get_target_from_dataset(trainset)
         
     else:
-        trainset = pd.read_csv(os.path.join(cfg.DATASET.datadir, cfg.DATASET.dataname, f'train_seed{cfg.DATASET.seed}.csv'))
+        trainset = pd.read_csv(os.path.join(cfg.DATASET.datadir, cfg.DATASET.name, f'train_seed{cfg.DATASET.seed}.csv'))
         labels = trainset.label.values
     
     # load query logs
@@ -926,7 +926,7 @@ def figure_query_cumsum(
     cfg = OmegaConf.load(cfg_path)
 
     # load dataset
-    trainset, _ = __import__('datasets').__dict__[f"load_{cfg.DATASET.dataname.lower()}"](
+    trainset, _ = __import__('datasets').__dict__[f"load_{cfg.DATASET.name.lower()}"](
         datadir  = cfg.DATASET.datadir, 
         img_size = cfg.DATASET.img_size,
         mean     = cfg.DATASET.mean, 

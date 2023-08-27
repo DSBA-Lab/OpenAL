@@ -332,17 +332,17 @@ def full_run(
 
     # load model
     model = create_model(
-        modelname   = cfg.MODEL.modelname, 
+        modelname   = cfg.MODEL.name, 
         num_classes = cfg.DATASET.num_classes, 
         img_size    = cfg.DATASET.img_size, 
         pretrained  = cfg.MODEL.pretrained
     )
     
     # optimizer
-    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.opt_name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
 
     # scheduler
-    scheduler = create_scheduler(sched_name=cfg.SCHEDULER.sched_name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
+    scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
 
     # criterion 
     criterion = torch.nn.CrossEntropyLoss()
@@ -362,7 +362,7 @@ def full_run(
         scheduler    = scheduler,
         accelerator  = accelerator,
         epochs       = cfg.TRAIN.epochs, 
-        use_wandb    = cfg.TRAIN.use_wandb,
+        use_wandb    = cfg.TRAIN.wandb.use,
         log_interval = cfg.TRAIN.log_interval,
         savedir      = savedir if validset != testset else None,
         seed         = cfg.DEFAULT.seed if validset != testset else None,
@@ -428,9 +428,7 @@ def full_run(
     
 
 def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
-    
-    assert cfg != None if cfg.TRAIN.wandb.use_wandb else True, 'If you use wandb, configs should be exist.'
-    
+
     # set active learning arguments
     nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
     
@@ -440,7 +438,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         nb_round = int(nb_round)
     
     # logging
-    _logger.info('[total samples] {}, [initial samples] {} [qeury samples] {} [end samples] {} [total round] {}'.format(
+    _logger.info('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {}'.format(
         len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round))
     
     # inital sampling labeling
@@ -454,9 +452,9 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
     
     # select strategy    
     strategy = create_query_strategy(
-        strategy_name = strategy, 
+        strategy_name = cfg.AL.strategy, 
         model         = create_model(
-                modelname   = cfg.MODEL.modelname, # TODO: modelname -> name
+                modelname   = cfg.MODEL.name,
                 num_classes = cfg.DATASET.num_classes, 
                 img_size    = cfg.DATASET.img_size, 
                 pretrained  = cfg.MODEL.pretrained, 
@@ -527,11 +525,11 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         if not cfg.AL.get('continual', False) or r == 0:
             model = strategy.init_model()
         
-        # optimizer # TODO: opt_name -> name
-        optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.opt_name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+        # optimizer
+        optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
 
-        # scheduler # TODO: sched_name -> name
-        scheduler = create_scheduler(sched_name=cfg.SCHEDULER.sched_name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
+        # scheduler
+        scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
 
         # define test dataloader
         validloader = DataLoader(
@@ -555,7 +553,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         )
         
         # initialize wandb
-        if cfg.TRAIN.wandb.use_wandb:
+        if cfg.TRAIN.wandb.use:
             wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
         # fitting model
@@ -568,7 +566,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             scheduler    = scheduler,
             accelerator  = accelerator,
             epochs       = cfg.TRAIN.epochs, 
-            use_wandb    = cfg.TRAIN.use_wandb,
+            use_wandb    = cfg.TRAIN.wandb.use,
             log_interval = cfg.TRAIN.log_interval,
             savedir      = savedir if validset != testset else None,
             seed         = cfg.DEFAULT.seed if validset != testset else None,

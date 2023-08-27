@@ -11,10 +11,10 @@ DATASET:
     - RandomCrop
     - RandomHorizontalFlip
 OPTIMIZER:
-  opt_name: SGD
+  name: SGD
   lr: 0.1
 SCHEDULER:
-  sched_name: cosine_annealing
+  name: cosine_annealing
   params:
     t_mult: 1
     eta_min: 0.00001
@@ -28,7 +28,7 @@ TRAIN:
     entity: dsba-al-2023
     project_name: Active Learning - Benchmark
 MODEL:
-  modelname: resnet18
+  name: resnet18
   pretrained: false
 AL:
   n_start: 1000
@@ -37,3 +37,4 @@ AL:
   n_subset: 0
   init:
     method: random_select
+  continual: false

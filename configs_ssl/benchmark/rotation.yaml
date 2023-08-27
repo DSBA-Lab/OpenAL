@@ -9,7 +9,7 @@ DATASET:
   num_workers: 12
   aug_info: null
 OPTIMIZER:
-  opt_name: SGD
+  name: SGD
   lr: 0.1
   params:
     momentum: 0.9
@@ -25,5 +25,5 @@ TRAIN:
     entity: dsba-al-2023
     project_name: Active Learning - Benchmark (SSL rotation)
 MODEL:
-  modelname: resnet18
+  name: resnet18
   pretrained: false

@@ -30,7 +30,7 @@ def run(cfg):
     # load dataset
     trainset, validset, testset = create_dataset(
         datadir  = cfg.DATASET.datadir, 
-        dataname = cfg.DATASET.dataname,
+        dataname = cfg.DATASET.name,
         img_size = cfg.DATASET.img_size,
         mean     = cfg.DATASET.mean,
         std      = cfg.DATASET.std,
@@ -42,7 +42,7 @@ def run(cfg):
         # make save directory
         al_name = f"total_{cfg.AL.n_end}-init_{cfg.AL.n_start}-query_{cfg.AL.n_query}"
         savedir = os.path.join(
-            cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, 
+            cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 
             cfg.AL.strategy, cfg.DEFAULT.exp_name, al_name, f'seed{cfg.DEFAULT.seed}'
         )
         
@@ -63,7 +63,7 @@ def run(cfg):
         )
     else:
         # make save directory
-        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.dataname, cfg.MODEL.modelname, 'Full', cfg.DEFAULT.exp_name)
+        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 'Full', cfg.DEFAULT.exp_name)
         
         assert not os.path.isdir(savedir), f'{savedir} already exists'
         os.makedirs(savedir)
