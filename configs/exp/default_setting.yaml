@@ -34,6 +34,8 @@ TRAIN:
     use: true
     entity: dsba-al-2023
     project_name: Active Learning - SamsungAL
+  params:
+    metrics_off: false
 MODEL:
   name: swin_base_patch4_window7_224.ms_in22k
   pretrained: true

@@ -101,6 +101,23 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
     return metrics
 
 
+def get_metrics(metrics: dict, metrics_log: str, targets: list, scores: list, preds: list, return_per_class: str = False):
+    metrics = calc_metrics(
+        y_true           = targets,
+        y_score          = scores,
+        y_pred           = preds,
+        return_per_class = return_per_class
+    )
+    metrics_log += ' | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % \
+                    (100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision'])
+
+    # classification report
+    _logger.info(classification_report(y_true=targets, y_pred=preds, digits=4, zero_division=0.0))
+    
+    return metrics, metrics_log
+
+
+
 def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, **train_params) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
@@ -170,23 +187,24 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             end = time.time()
     
     # calculate metrics
-    metrics = calc_metrics(
-        y_true  = total_targets,
-        y_score = total_score,
-        y_pred  = total_preds
+    metrics = {}
+    metrics.update([('acc',acc_m.avg), ('loss',losses_m.avg)])
+    metrics_log = '\nTRAIN: Loss: %.3f | Acc: %.3f%%' % (metrics['loss'], 100.*metrics['acc'])
+    
+    if not train_params.get('metrics_off', False):
+        metrics, metrics_log = get_metrics(
+        metrics          = metrics, 
+        metrics_log      = metrics_log, 
+        targets          = total_targets, 
+        scores           = total_score, 
+        preds            = total_preds, 
     )
     
-    metrics.update([('acc',acc_m.avg), ('loss',losses_m.avg)])
-    
     # logging metrics
-    _logger.info('\nTRAIN: Loss: %.3f | Acc: %.3f%% | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % 
-                 (metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
-    
-    # classification report
-    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4, zero_division=0.0))
-    
-    return metrics
+    _logger.info(metrics_log)
         
+    return metrics
+
         
 def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False) -> dict:
     correct = 0
@@ -222,40 +240,39 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
                 _logger.info('{0:s} [{1:d}/{2:d}]: Loss: {3:.3f} | Acc: {4:.3f}% [{5:d}/{6:d}]'.format(name, idx+1, len(dataloader), total_loss/(idx+1), 100.*correct/total, correct, total))
     
     # calculate metrics
-    metrics = calc_metrics(
-        y_true           = total_targets,
-        y_score          = total_score,
-        y_pred           = total_preds,
+    metrics = {}
+    metrics.update([('acc',correct/total), ('loss',total_loss/len(dataloader))])
+    metrics_log = '\n%s: Loss: %.3f | Acc: %.3f%%' % (name, metrics['loss'], 100.*metrics['acc'])
+
+    metrics, metrics_log = get_metrics(
+        metrics          = metrics, 
+        metrics_log      = metrics_log, 
+        targets          = total_targets, 
+        scores           = total_score, 
+        preds            = total_preds, 
         return_per_class = return_per_class
     )
     
-    metrics.update([('acc',correct/total), ('loss',total_loss/len(dataloader))])
-    
     # logging metrics
-    _logger.info('\n%s: Loss: %.3f | Acc: %.3f%% | BCR: %.3f%% | AUROC: %.3f%% | F1-Score: %.3f%% | Recall: %.3f%% | Precision: %.3f%%\n' % 
-                 (name, metrics['loss'], 100.*metrics['acc'], 100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision']))
-    
-    # classification report
-    _logger.info(classification_report(y_true=total_targets, y_pred=total_preds, digits=4, zero_division=0.0))
+    _logger.info(metrics_log)
     
     return metrics
             
                 
 def fit(
     model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, seed: int = None, savedir: str = None, ckp_metric: str = None, **kwargs
+    epochs: int, use_wandb: bool, log_interval: int, seed: int = None, savedir: str = None, ckp_metric: str = None, **train_params
 ) -> None:
 
     step = 0
     best_score = 0
-    train_params = {}
     
     for epoch in range(epochs):
         _logger.info(f'\nEpoch: {epoch+1}/{epochs}')
         
         # for learning loss
-        if 'detach_epoch_ratio' in kwargs.keys():
-            is_detach_lpm = True if epoch > int(epochs * kwargs['detach_epoch_ratio']) else False
+        if 'detach_epoch_ratio' in train_params.keys():
+            is_detach_lpm = True if epoch > int(epochs * train_params['detach_epoch_ratio']) else False
             train_params['is_detach_lpm'] = is_detach_lpm
         
         train_metrics = train(

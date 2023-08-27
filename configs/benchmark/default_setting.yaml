@@ -27,6 +27,8 @@ TRAIN:
     use: true
     entity: dsba-al-2023
     project_name: Active Learning - Benchmark
+  params:
+    metrics_off: false
 MODEL:
   name: resnet18
   pretrained: false
