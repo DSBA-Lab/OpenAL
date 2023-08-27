@@ -474,7 +474,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
     trainloader = DataLoader(
         dataset     = trainset,
         batch_size  = cfg.DATASET.batch_size,
-        sampler     = SubsetRandomSampler(indices=np.where(labeled_idx==True)[0]), # TODO 바꾸기
+        sampler     = strategy.select_sampler(indices=np.where(labeled_idx==True)[0]),
         num_workers = cfg.DATASET.num_workers
     )
     
