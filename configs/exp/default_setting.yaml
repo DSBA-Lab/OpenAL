@@ -3,7 +3,7 @@ DEFAULT:
   savedir: ./results/
 DATASET:
   datadir: /datasets
-  dataname: SamsungAL
+  name: SamsungAL
   batch_size: 128
   test_batch_size: 128
   num_workers: 12
