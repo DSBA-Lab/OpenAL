@@ -4,7 +4,6 @@ DEFAULT:
 DATASET:
   datadir: /datasets
   dataname: SamsungAL
-  seed: 42
   batch_size: 128
   test_batch_size: 128
   num_workers: 12
@@ -13,6 +12,8 @@ DATASET:
     - RandomHorizontalFlip
     - RandomVerticalFlip
     - Resize
+  params:
+    seed: 42
 OPTIMIZER:
   name: AdamW
   lr: 0.00001

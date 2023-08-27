@@ -35,7 +35,7 @@ def run(cfg):
         mean     = cfg.DATASET.mean,
         std      = cfg.DATASET.std,
         aug_info = cfg.DATASET.aug_info,
-        seed     = cfg.DATASET.seed
+        **cfg.DATASET.get('params', {})
     )
     
     if 'AL' in cfg.keys():
