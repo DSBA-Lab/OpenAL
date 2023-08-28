@@ -28,3 +28,5 @@ class SubsetWeightedRandomSampler(Sampler):
         
         return (self.indices[i] for i in rand_tensor)
     
+    def __len__(self):
+        return len(self.indices)
