@@ -12,6 +12,7 @@ from torchvision import transforms
 def add_augmentation(transform: transforms.Compose, img_size: int, aug_info: list = None):
     augments_dict = {
         'RandomCrop': transforms.RandomCrop((img_size, img_size), padding=4),
+        'RandomResizedCrop': transforms.RandomResizedCrop(size=(img_size, img_size)),
         'RandomHorizontalFlip': transforms.RandomHorizontalFlip(),
         'RandomVerticalFlip': transforms.RandomVerticalFlip(),
         'Resize': transforms.Resize((img_size, img_size)),

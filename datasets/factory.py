@@ -1,8 +1,13 @@
 import os
+import json
+import numpy as np
+import pandas as pd
 
+from copy import deepcopy
 from torchvision import datasets
-from .build import ALDataset
+
 from .cifar_lt import CIFAR10LT, CIFAR100LT
+from .waterbird import WaterBird
 from .augmentation import train_augmentation, test_augmentation
 
 def load_cifar10(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
@@ -44,7 +49,7 @@ def load_cifar100(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info
 
 
 def load_cifar10lt(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, 
-                   imbalance_type: str = 'exp', imbalance_factor: int = 200):
+                   imbalance_type: str = 'exp', imbalance_factor: int = 1):
 
     trainset = CIFAR10LT(
         root             = os.path.join(datadir,'CIFAR10'), 
@@ -66,7 +71,7 @@ def load_cifar10lt(datadir: str, img_size: int, mean: tuple, std: tuple, aug_inf
 
 
 def load_cifar100lt(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, 
-                    imbalance_type: str = 'exp', imbalance_factor: int = 200):
+                    imbalance_type: str = 'exp', imbalance_factor: int = 1):
 
     trainset = CIFAR100LT(
         root             = os.path.join(datadir,'CIFAR100'), 
@@ -120,53 +125,73 @@ def load_tiny_imagenet_200(datadir: str, img_size: int, mean: tuple, std: tuple,
 
     return trainset, testset
     
-def load_al_dataset(dataname: str, datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, seed: int = 42):
-    trainset = ALDataset(
-        datadir   = os.path.join(datadir, dataname),
-        name      = f'train_seed{seed}.csv',
-        transform = train_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
-    )
-    validset = ALDataset(
-        datadir   = os.path.join(datadir, dataname), 
-        name      = f'validation_seed{seed}.csv',
-        transform = test_augmentation(img_size=img_size, mean=mean, std=std)
-    )
-    testset = ALDataset(
-        datadir   = os.path.join(datadir, dataname), 
-        name      = f'test_seed{seed}.csv',
-        transform = test_augmentation(img_size=img_size, mean=mean, std=std)
+
+def load_waterbird(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
+    meta_info = pd.read_csv(os.path.join(datadir, 'metadata.csv'))
+
+    trainset = WaterBird(
+        datadir   = datadir,
+        meta_info = meta_info[meta_info.split == 0],
+        transform = train_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info),
     )
     
+    validset = WaterBird(
+        datadir   = datadir,
+        meta_info = meta_info[meta_info.split == 1],
+        transform = test_augmentation(img_size=img_size, mean=mean, std=std),
+    )
+    
+    testset = WaterBird(
+        datadir   = datadir,
+        meta_info = meta_info[meta_info.split == 2],
+        transform = test_augmentation(img_size=img_size, mean=mean, std=std),
+    )
+
     return trainset, validset, testset
 
 
 def create_dataset(
     datadir: str, dataname: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, **params
 ):
-   
-    if f"load_{dataname.lower()}" in __import__(__name__).__dict__.keys():
+
+    datasets = eval(f"load_{dataname.lower()}")(
+        datadir  = datadir, 
+        img_size = img_size,
+        mean     = mean, 
+        std      = std,
+        aug_info = aug_info,
+        **params
+    )
+
+    if dataname != 'WaterBird':
         # benchmark datasets
-        trainset, testset = eval(f"load_{dataname.lower()}")(
-            datadir  = datadir, 
-            img_size = img_size,
-            mean     = mean, 
-            std      = std,
-            aug_info = aug_info,
-            **params
-        )
+        trainset, testset = datasets
+        validset = deepcopy(testset)
         
-        validset = testset
+    elif dataname == 'WaterBird':
+        trainset, validset, testset = datasets
+    
+    # generate imbalance data after splitting datasets
+    # because CIFAR-LT assumes that test-set is a balanced dataset
+    if dataname == 'CIFAR10LT' or dataname == 'CIFAR100LT':
+        trainset.gen_imbalanced_data()
         
-    else:
-        # user custom datasets
-        trainset, validset, testset = load_al_dataset(
-            datadir  = datadir, 
-            dataname = dataname,
-            img_size = img_size,
-            mean     = mean,
-            std      = std,
-            aug_info = aug_info,
-            **params
-        )
+    # set classes
+    trainset = set_classes(dataset=trainset, dataname=dataname)
+    validset = set_classes(dataset=validset, dataname=dataname)
+    testset = set_classes(dataset=testset, dataname=dataname)
     
     return trainset, validset, testset
+
+
+def set_classes(dataset, dataname):
+    if not hasattr(dataset, 'classes') or dataname == 'Tiny_ImageNet_200':
+        print('add classes from classnames.json')
+        classnames = json.load(open('classnames.json', 'r'))[dataname.lower()]
+        dataset.classes = np.array(classnames)
+        
+    if isinstance(dataset.classes, list):
+        dataset.classes = np.array(dataset.classes)
+        
+    return dataset
+    

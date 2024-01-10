@@ -12,9 +12,8 @@ class CIFAR10LT(torchvision.datasets.CIFAR10):
         
         super(CIFAR10LT, self).__init__(root=root, train=train, transform=transform, download=download)
         self.num_classes = len(np.unique(self.targets))
-        
-        if train:
-            self.gen_imbalanced_data(imb_type=imbalance_type, imb_factor=imbalance_factor)
+        self.imbalance_type = imbalance_type
+        self.imbalance_factor = imbalance_factor
 
     def _get_img_num_per_cls(self, imb_type: str, imb_factor: float):
         gamma = 1. / imb_factor
@@ -41,9 +40,9 @@ class CIFAR10LT(torchvision.datasets.CIFAR10):
         num_per_cls = dict([(c_i, img_num_c_i) for c_i, img_num_c_i in zip(np.unique(self.targets), img_num_per_cls)])
         setattr(self, 'num_per_cls', num_per_cls)
 
-    def gen_imbalanced_data(self, imb_type: str, imb_factor: int = 1):
+    def gen_imbalanced_data(self):
         # get the number of images per class
-        self._get_img_num_per_cls(imb_type=imb_type, imb_factor=imb_factor)
+        self._get_img_num_per_cls(imb_type=self.imbalance_type, imb_factor=self.imbalance_factor)
         
         imb_data = []
         imb_targets = []
