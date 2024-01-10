@@ -4,8 +4,6 @@ import re
 import os
 import pandas as pd
 import numpy as np
-import torch
-import random
 from omegaconf import OmegaConf
 from collections import defaultdict
 from glob import glob
@@ -13,20 +11,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from query_strategies import get_target_from_dataset
-
-
-def torch_seed(random_seed):
-    torch.manual_seed(random_seed)
-    torch.cuda.manual_seed(random_seed)
-    torch.cuda.manual_seed_all(random_seed) # if use multi-GPU 
-    # CUDA randomness
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    
-    np.random.seed(random_seed)
-    random.seed(random_seed)
-    os.environ['PYTHONHASHSEED'] = str(random_seed)
-
 
 class NoIndent(object):
     """ Value wrapper. """
@@ -291,9 +275,9 @@ def extract_al_results(
         for seed in seed_list:
             
             # define filename
-            al_filename = f'round{total_round}-seed{seed}'
+            al_filename = f'round{total_round}-seed{seed}_test'
             if not test:
-                al_filename += '_best'
+                al_filename += '_valid'
             
             if binary:
                 al_filename += '-per_class.json'
@@ -399,8 +383,9 @@ def extract_full_results(
             # define filename
             full_filename = f'results-seed{seed}'
             if not test:
-                full_filename = full_filename.replace('-seed', '_seed')
-                full_filename += '_best'
+                full_filename += '_valid'
+            else:
+                full_filename += '_test'
                 
             if binary:
                 full_filename += '-per_class.json'
@@ -430,7 +415,8 @@ def extract_full_results(
 def comparison_strategy(
     savedir: str, exp_names: list, fullname_list: list, seed_list: list, model: str, 
     n_start: int, n_query: int, n_end: int, 
-    savepath: str = None, figsize: tuple = (7,10), test: bool = True, binary: bool = False, change_names: dict = None) -> dict:
+    savepath: str = None, figsize: tuple = (7,10), test: bool = True, binary: bool = False, change_names: dict = None,
+    metrics: list = ['acc'], show: bool = True) -> dict:
     """
     Comparison strategies results using figure
     
@@ -518,39 +504,45 @@ def comparison_strategy(
         r_full = None
         
     # plot
-    if binary:
-        metrics = ['acc','recall','precision','f1']
-    else:
-        metrics = ['auroc','f1','recall','precision','bcr','acc']
-        
-    row = 2
-    col = len(metrics)//row
-    fig, ax = plt.subplots(row, col, figsize=figsize)
+    if show:
+        row = 2 if len(metrics) > 1 else 1
+        col = len(metrics)//row
+        fig, ax = plt.subplots(row, col, figsize=figsize)
 
-    for i in range(row*col):
-        strategy_figure(
-            data        = r,
-            data_full   = r_full,
-            metric      = metrics[i],
-            total_round = total_round,
-            n_query     = n_query,
-            n_start     = n_start,
-            ax          = ax[i//col, i%col]
+        for i in range(row*col):
+            if isinstance(ax, np.ndarray):
+                if len(ax.shape) == 2:
+                    ax_i = ax[i//col, i%col]
+                elif (len(ax.shape) == 1) and (len(ax) > 1):
+                    ax_i = ax[i]
+            else:
+                ax_i = ax
+                
+            strategy_figure(
+                data        = r,
+                data_full   = r_full,
+                metric      = metrics[i],
+                total_round = total_round,
+                n_query     = n_query,
+                n_start     = n_start,
+                ax          = ax_i
+            )
+        
+            if i == 0:
+                lines, labels = ax_i.get_legend_handles_labels()
+                for l in lines:
+                    l.set_linewidth(10)
+            
+            ax_i.get_legend().remove()
+
+        fig.legend(
+            lines, labels, ncol=6, loc='lower center', bbox_to_anchor=(0.5, 0.98), 
+            frameon=False, fontsize=15, 
         )
-    
-        if i == 0:
-            lines, labels = ax[i//col, i%col].get_legend_handles_labels()
-        
-        ax[i//col, i%col].get_legend().remove()
-
-    fig.legend(
-        lines, labels, ncol=6, loc='lower center', bbox_to_anchor=(0.5, 0.98), 
-        frameon=False, fontsize=15, 
-    )
-    plt.tight_layout()
-    if savepath:
-        plt.savefig(savepath, dpi=300)
-    plt.show()
+        plt.tight_layout()
+        if savepath:
+            plt.savefig(savepath, dpi=300)
+        plt.show()
             
         
     return r
@@ -563,6 +555,7 @@ def strategy_figure(data, data_full, metric, total_round, n_query, n_start, ax):
         x    = 'round',
         y    = metric,
         hue  = 'strategy',
+        marker = 'o',
         data = data,
         ax   = ax
     )
@@ -574,12 +567,11 @@ def strategy_figure(data, data_full, metric, total_round, n_query, n_start, ax):
         ax.axhline(y=data_full[metric].mean() - data_full[metric].std(), linestyle='--', color='black')   
         
     # figure info
-    ax.set_title(metric.upper())
-    ax.set_ylabel('Score')
+    ax.set_ylabel(metric.upper())
     ax.set_xlabel('The Number of Labeled Images')
     ax.set_xticks(
-        (np.arange(0,total_round+1,5)).astype(int), 
-        (np.arange(0,total_round+1,5)*n_query + n_start).astype(int), 
+        (np.arange(0,total_round+1,1)).astype(int), 
+        (np.arange(0,total_round+1,1)*n_query + n_start).astype(int), 
         rotation = 45, 
         size     = 10
     )
@@ -743,9 +735,9 @@ def query_frequency(
                 
         query_results[exp] = df_round
         
-    fig, ax = plt.subplots(1, len(exp_names)+1, figsize=figsize)
+    fig, ax = plt.subplots(1, len(exp_names)+2, figsize=figsize)
 
-    # init frequency
+    # trainset frequency
     label_id, label_cnt = np.unique(labels, return_counts=True)
     ax[0] = sns.barplot(
         x    = label_id,
@@ -754,26 +746,42 @@ def query_frequency(
     )
     ax[0].set_ylabel('Frequency')
     ax[0].set_xlabel('Class')
-    ax[0].set_title('Initial dataset')
+    ax[0].set_title('Train dataset')
     for container in ax[0].containers:
         ax[0].bar_label(container, fmt='%d', size=13)
+        
+    # init frequency
+    for i, (name, q_r) in enumerate(query_results.items()):
+        df_query = q_r[q_r.query_round=='round0'].groupby('label').idx.sum().reset_index()
+        
+        ax[1] = sns.barplot(
+            x    = 'label',
+            y    = 'idx',
+            data = df_query,
+            ax   = ax[1]
+        )
+        ax[1].set_ylabel('Frequency')
+        ax[1].set_xlabel('Class')
+        ax[1].set_title('Initial dataset')
+        for container in ax[1].containers:
+            ax[1].bar_label(container, fmt='%d', size=13)
 
 
     # query frequency
     for i, (name, q_r) in enumerate(query_results.items()):
         df_query = q_r[q_r.query_round!='round0'].groupby('label').idx.sum().reset_index()
         
-        ax[i+1] = sns.barplot(
+        ax[i+2] = sns.barplot(
             x    = 'label',
             y    = 'idx',
             data = df_query,
-            ax   = ax[i+1]
+            ax   = ax[i+2]
         )
-        ax[i+1].set_ylabel('Frequency')
-        ax[i+1].set_xlabel('Class')
-        ax[i+1].set_title(name)
-        for container in ax[i+1].containers:
-            ax[i+1].bar_label(container, fmt='%d', size=13)
+        ax[i+2].set_ylabel('Frequency')
+        ax[i+2].set_xlabel('Class')
+        ax[i+2].set_title(name)
+        for container in ax[i+2].containers:
+            ax[i+2].bar_label(container, fmt='%d', size=13)
         
     plt.tight_layout()
     plt.show()
