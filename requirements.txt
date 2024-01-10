@@ -1,7 +1,6 @@
 accelerate==0.18.0
 wandb
 torchvision==0.15.0a0
-gradio==3.27.0
 omegaconf
 timm==0.9.2
 seaborn==0.12.2
