@@ -1,7 +1,0 @@
-AL:
-  strategy: MeanSTDSampling
-  params:
-    num_mcdropout: 10 
-MODEL:   
-  params:
-    drop_rate: 0.5
