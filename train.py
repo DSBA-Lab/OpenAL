@@ -8,14 +8,17 @@ import numpy as np
 import pandas as pd
 
 import torch
-from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch.utils.data import DataLoader
 from collections import OrderedDict
 from accelerate import Accelerator
 
 from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, \
                             balanced_accuracy_score, classification_report, confusion_matrix
 
-from query_strategies import create_query_strategy, create_labeled_index
+from open_clipn import load_model
+from query_strategies import create_query_strategy, create_is_labeled, create_id_ood_targets, create_is_labeled_unlabeled, create_id_testloader, torch_seed
+from query_strategies.prompt_ensemble import PromptEnsemble
+from query_strategies.clipn_al import CLIPNAL
 from models import create_model
 from utils import NoIndent, MyEncoder
 from omegaconf import OmegaConf
@@ -40,6 +43,32 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 
+class PromptLoss(torch.nn.CrossEntropyLoss):
+    def __init__(self, loss_weight: float = 1., weight=None, size_average=None, ignore_index=-100, reduce=None, reduction: str = 'mean', label_smoothing: float = 0.0):
+        super(PromptLoss, self).__init__(
+            weight          = weight, 
+            size_average    = size_average, 
+            ignore_index    = ignore_index, 
+            reduce          = reduce, 
+            reduction       = reduction, 
+            label_smoothing = label_smoothing
+        )
+        
+        self.loss_weight = loss_weight
+        
+    def forward(self, input: torch.Tensor, target: torch.Tensor):
+        ce_loss = torch.nn.functional.cross_entropy(input['logits'], target, weight=self.weight,
+                                                        ignore_index=self.ignore_index, reduction=self.reduction,
+                                                        label_smoothing=self.label_smoothing)
+        
+        prompt_ce_loss = torch.nn.functional.cross_entropy(input['prompt_logits'], target, weight=self.weight,
+                                                     ignore_index=self.ignore_index, reduction=self.reduction,
+                                                     label_smoothing=self.label_smoothing)
+        
+        loss = ce_loss + self.loss_weight * prompt_ce_loss
+        
+        return loss
+
 def accuracy(outputs, targets, return_correct=False):
     # calculate accuracy
     preds = outputs.argmax(dim=1) 
@@ -58,6 +87,13 @@ def create_scheduler(sched_name, optimizer, epochs: int, params: dict):
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=params['milestones'])
         
     return scheduler
+
+
+def create_criterion(name, params):
+    if name == 'CrossEntropyLoss':
+        return torch.nn.CrossEntropyLoss(**params)
+    elif name == 'PromptLoss':
+        return PromptLoss(**params)
 
 def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_class: bool = False) -> dict:
     # softmax
@@ -118,7 +154,7 @@ def get_metrics(metrics: dict, metrics_log: str, targets: list, scores: list, pr
 
 
 
-def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, **train_params) -> dict:   
+def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, query_model = None, **train_params) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     acc_m = AverageMeter()
@@ -132,20 +168,28 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     
     model.train()
     optimizer.zero_grad()
+    
     for idx, (inputs, targets) in enumerate(dataloader):
         with accelerator.accumulate(model):
             data_time_m.update(time.time() - end)
             
             # predict
-            outputs = model(inputs)
+            if query_model != None:
+                with torch.no_grad():
+                    cls_features = query_model.forward_features(inputs)[:,0]
+                outputs = model(inputs, cls_features=cls_features)
+            else:
+                outputs = model(inputs)
             
             # detach LPM for learning loss
-            if 'is_detach_lpm' in train_params.keys():
-                if train_params['is_detach_lpm']:
-                    for k, v in model.layer_outputs.items():
-                        model.layer_outputs[k] = v.detach()
+            if train_params.get('is_detach_lpm', False):
+                for k, v in model.layer_outputs.items():
+                    model.layer_outputs[k] = v.detach()
 
             # calc loss
+            if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
+                outputs = outputs['logits']
+                
             loss = criterion(outputs, targets)    
             accelerator.backward(loss)
 
@@ -193,12 +237,12 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     
     if not train_params.get('metrics_off', False):
         metrics, metrics_log = get_metrics(
-        metrics          = metrics, 
-        metrics_log      = metrics_log, 
-        targets          = total_targets, 
-        scores           = total_score, 
-        preds            = total_preds, 
-    )
+            metrics     = metrics, 
+            metrics_log = metrics_log, 
+            targets     = total_targets, 
+            scores      = total_score, 
+            preds       = total_preds, 
+        )
     
     # logging metrics
     _logger.info(metrics_log)
@@ -206,7 +250,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     return metrics
 
         
-def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False) -> dict:
+def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False, query_model = None) -> dict:
     correct = 0
     total = 0
     total_loss = 0
@@ -219,9 +263,15 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
     with torch.no_grad():
         for idx, (inputs, targets) in enumerate(dataloader):
             # predict
-            outputs = model(inputs)
+            if query_model != None:
+                cls_features = query_model.forward_features(inputs)[:,0]
+                outputs = model(inputs, cls_features=cls_features)
+            else:
+                outputs = model(inputs)
             
-            # loss 
+            # loss
+            if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
+                outputs = outputs['logits']
             loss = criterion(outputs, targets)
             
             # total loss and acc
@@ -261,11 +311,10 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
                 
 def fit(
     model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, seed: int = None, savedir: str = None, ckp_metric: str = None, **train_params
+    epochs: int, use_wandb: bool, log_interval: int, query_model = None, **train_params
 ) -> None:
 
     step = 0
-    best_score = 0
     
     for epoch in range(epochs):
         _logger.info(f'\nEpoch: {epoch+1}/{epochs}')
@@ -277,6 +326,7 @@ def fit(
         
         train_metrics = train(
             model        = model, 
+            query_model  = query_model,
             dataloader   = trainloader, 
             criterion    = criterion, 
             optimizer    = optimizer, 
@@ -285,19 +335,24 @@ def fit(
             **train_params
         )
         
-        eval_metrics = test(
-            model        = model, 
-            dataloader   = testloader, 
-            criterion    = criterion, 
-            log_interval = log_interval,
-            name         = 'VALID'
-        )
+        if testloader != None:
+            eval_metrics = test(
+                model        = model, 
+                query_model  = query_model,
+                dataloader   = testloader, 
+                criterion    = criterion, 
+                log_interval = log_interval,
+                name         = 'VALID'
+            )
 
         # wandb
         if use_wandb:
             metrics = OrderedDict(lr=optimizer.param_groups[0]['lr'])
             metrics.update([('train_' + k, v) for k, v in train_metrics.items()])
-            metrics.update([('eval_' + k, v) for k, v in eval_metrics.items()])
+            
+            if testloader != None:
+                metrics.update([('eval_' + k, v) for k, v in eval_metrics.items()])
+                
             wandb.log(metrics, step=step)
         
         step += 1
@@ -306,16 +361,6 @@ def fit(
         if scheduler:
             scheduler.step()
         
-        # checkpoint - save best results and model weights
-        if ckp_metric:
-            ckp_cond = (best_score > eval_metrics[ckp_metric]) if ckp_metric == 'loss' else (best_score < eval_metrics[ckp_metric])
-            if savedir and ckp_cond:
-                best_score = eval_metrics[ckp_metric]
-                state = {'best_step':step}
-                state.update(eval_metrics)
-                json.dump(state, open(os.path.join(savedir, f'results_seed{seed}_best.json'), 'w'), indent='\t')
-                torch.save(model.state_dict(), os.path.join(savedir, f'model_seed{seed}_best.pt'))
-
 
 def full_run(
     cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
@@ -348,30 +393,33 @@ def full_run(
     )
 
     # load model
-    model = create_model(
+    query_model, model = create_model(
         modelname   = cfg.MODEL.name, 
         num_classes = cfg.DATASET.num_classes, 
-        img_size    = cfg.DATASET.img_size, 
-        pretrained  = cfg.MODEL.pretrained
+        pretrained  = cfg.MODEL.pretrained,
+        **cfg.MODEL.get('params',{})
     )
     
     # optimizer
-    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](
+        model.prompt.parameters() if cfg.MODEL.name == 'VPTAL' else model.parameters(), 
+        lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
 
     # scheduler
     scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
 
     # criterion 
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = create_criterion(name=cfg.LOSS.name, params=cfg.LOSS.get('params', {}))
     
     # prepraring accelerator
-    model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
-        model, optimizer, trainloader, validloader, testloader, scheduler
+    model, query_model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+        model, query_model, optimizer, trainloader, validloader, testloader, scheduler
     )
 
     # fitting model
     fit(
         model        = model, 
+        query_model  = query_model,
         trainloader  = trainloader, 
         testloader   = validloader, 
         criterion    = criterion, 
@@ -380,19 +428,14 @@ def full_run(
         accelerator  = accelerator,
         epochs       = cfg.TRAIN.epochs, 
         use_wandb    = cfg.TRAIN.wandb.use,
-        log_interval = cfg.TRAIN.log_interval,
-        savedir      = savedir if validset != testset else None,
-        seed         = cfg.DEFAULT.seed if validset != testset else None,
-        ckp_metric   = cfg.TRAIN.ckp_metric if validset != testset else None
+        log_interval = cfg.TRAIN.log_interval
     )
     
     # save model
-    torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}.pt"))
-    
-    if validset != testset:
-        # load best checkpoint 
-        model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{cfg.DEFAULT.seed}_best.pt')))
-
+    if cfg.MODEL.name == 'VPTAL':
+        torch.save(model.prompt.state_dict(), os.path.join(savedir, f"prompt_seed{cfg.DEFAULT.seed}.pt"))
+    else:
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}.pt"))
 
     # ====================
     # validation results
@@ -400,6 +443,7 @@ def full_run(
     
     eval_results = test(
         model            = model, 
+        query_model      = query_model,
         dataloader       = validloader, 
         criterion        = criterion, 
         log_interval     = cfg.TRAIN.log_interval,
@@ -409,14 +453,14 @@ def full_run(
     # save results per class
     json.dump(
         obj    = eval_results['per_class'], 
-        fp     = open(os.path.join(savedir, f"results-seed{cfg.DEFAULT.seed}_best-per_class.json"), 'w'), 
+        fp     = open(os.path.join(savedir, f"results-seed{cfg.DEFAULT.seed}_valid-per_class.json"), 'w'), 
         cls    = MyEncoder,
         indent = '\t'
     )
     del eval_results['per_class']
 
     # save results
-    json.dump(eval_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}_best.json'), 'w'), indent='\t')
+    json.dump(eval_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}_valid.json'), 'w'), indent='\t')
     
 
     # ====================
@@ -425,6 +469,7 @@ def full_run(
     
     test_results = test(
         model            = model, 
+        query_model      = query_model,
         dataloader       = testloader, 
         criterion        = criterion, 
         log_interval     = cfg.TRAIN.log_interval,
@@ -434,14 +479,14 @@ def full_run(
     # save results per class
     json.dump(
         obj    = test_results['per_class'], 
-        fp     = open(os.path.join(savedir, f"results-seed{cfg.DEFAULT.seed}-per_class.json"), 'w'), 
+        fp     = open(os.path.join(savedir, f"results-seed{cfg.DEFAULT.seed}_test-per_class.json"), 'w'), 
         cls    = MyEncoder,
         indent = '\t'
     )
     del test_results['per_class']
 
     # save results
-    json.dump(test_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}.json'), 'w'), indent='\t')
+    json.dump(test_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}_test.json'), 'w'), indent='\t')
     
 
 def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
@@ -459,7 +504,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round))
     
     # inital sampling labeling
-    labeled_idx = create_labeled_index(
+    is_labeled = create_is_labeled(
         method   = cfg.AL.init.method,
         trainset = trainset,
         size     = cfg.AL.n_start,
@@ -467,34 +512,35 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         **cfg.AL.init.get('params', {})
     )
     
+    # load model
+    query_model, model = create_model(
+        modelname   = cfg.MODEL.name,
+        num_classes = cfg.DATASET.num_classes, 
+        pretrained  = cfg.MODEL.pretrained, 
+        **cfg.MODEL.get('params',{})
+    )
+    
     # select strategy    
     strategy = create_query_strategy(
-        strategy_name = cfg.AL.strategy, 
-        model         = create_model(
-                modelname   = cfg.MODEL.name,
-                num_classes = cfg.DATASET.num_classes, 
-                img_size    = cfg.DATASET.img_size, 
-                pretrained  = cfg.MODEL.pretrained, 
-                **cfg.MODEL.get('params',{})
-            ),
-        dataset       = trainset, 
-        sampler_name  = cfg.DATASET.sampler_name,
-        labeled_idx   = labeled_idx, 
-        n_query       = cfg.AL.n_query, 
-        n_subset      = cfg.AL.n_subset,
-        batch_size    = cfg.DATASET.batch_size, 
-        num_workers   = cfg.DATASET.num_workers,
-        params        = cfg.AL.get('params', {})
+        strategy_name    = cfg.AL.strategy, 
+        model            = model,
+        dataset          = trainset, 
+        test_transform   = testset.transform,
+        sampler_name     = cfg.DATASET.sampler_name,
+        is_labeled       = is_labeled, 
+        n_query          = cfg.AL.n_query, 
+        n_subset         = cfg.AL.n_subset,
+        batch_size       = cfg.DATASET.batch_size, 
+        num_workers      = cfg.DATASET.num_workers,
+        tta_agg          = cfg.AL.get('tta_agg', None),
+        tta_params       = cfg.AL.get('tta_params', None),
+        interval_type    = cfg.AL.get('interval_type', 'top'),
+        resampler_params = cfg.AL.get('resampler_params', None),
+        params           = cfg.AL.get('params', {})
     )
     
     # define train dataloader
-    trainloader = DataLoader(
-        dataset     = trainset,
-        batch_size  = cfg.DATASET.batch_size,
-        sampler     = strategy.select_sampler(indices=np.where(labeled_idx==True)[0]),
-        num_workers = cfg.DATASET.num_workers
-    )
-    
+    trainloader = strategy.get_trainloader()
     
     # define log dataframe
     log_df_valid = pd.DataFrame(
@@ -505,9 +551,13 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
     )
     
     # query log dataframe
-    query_log_df = pd.DataFrame({'idx': range(len(labeled_idx))})
+    query_log_df = pd.DataFrame({'idx': range(len(is_labeled))})
     query_log_df['query_round'] = None
-    query_log_df.loc[labeled_idx, 'query_round'] = 'round0'
+    query_log_df.loc[is_labeled, 'query_round'] = 'round0'
+    
+    # number of labeled set log dataframe
+    nb_labeled_df = pd.DataFrame({'round': range(nb_round+1), 'nb_labeled': [0]*(nb_round+1)})
+    nb_labeled_df.loc[nb_labeled_df['round']==0, 'nb_labeled'] = is_labeled.sum()
     
     # define dict to save confusion matrix and metrics per class
     metrics_log_eval = {}
@@ -518,25 +568,40 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         
         if r != 0:    
             # query sampling    
-            query_idx = strategy.query(model)
+            query_params = {}
+            if cfg.AL.strategy == 'PromptEnsemble':
+                query_params = {'r': r, 'seed': cfg.DEFAULT.seed, 'savedir': savedir}
+                
+            query_idx = strategy.query(model, **query_params)
+            
+            # update query
+            strategy.update(query_idx)
+            
+            # query_idx resampling
+            if strategy.use_resampler:
+                strategy.resampler(model)
+            
+            # get trainloader
+            del trainloader
+            trainloader = strategy.get_trainloader()
             
             # save query index
             query_log_df.loc[query_idx, 'query_round'] = f'round{r}'
             query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
             
+            # save nb_labeled
+            nb_labeled_df.loc[nb_labeled_df['round']==r, 'nb_labeled'] = strategy.is_labeled.sum()
+            nb_labeled_df.to_csv(os.path.join(savedir, 'nb_labeled.csv'), index=False)
+            
             # clean memory
-            del optimizer, scheduler, trainloader, validloader, testloader
+            del optimizer, scheduler, validloader, testloader
             if not cfg.AL.continual:
                 del model
                 
             accelerator.free_memory()
             
-            # update query
-            trainloader = strategy.update(query_idx)
-            
-            
         # logging
-        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.labeled_idx)))
+        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(is_labeled)))
         
         # build Model
         if not cfg.AL.get('continual', False) or r == 0:
@@ -565,19 +630,21 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         )
         
         # prepraring accelerator
-        model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
-            model, optimizer, trainloader, validloader, testloader, scheduler
+        model, query_model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+            model, query_model, optimizer, trainloader, validloader, testloader, scheduler
         )
         
         # initialize wandb
         if cfg.TRAIN.wandb.use:
             wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
+        torch_seed(cfg.DEFAULT.seed)
         # fitting model
         fit(
             model        = model, 
+            query_model  = query_model, 
             trainloader  = trainloader, 
-            testloader   = validloader, 
+            testloader   = None, 
             criterion    = strategy.loss_fn, 
             optimizer    = optimizer, 
             scheduler    = scheduler,
@@ -585,55 +652,367 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             epochs       = cfg.TRAIN.epochs, 
             use_wandb    = cfg.TRAIN.wandb.use,
             log_interval = cfg.TRAIN.log_interval,
-            savedir      = savedir if validset != testset else None,
-            seed         = cfg.DEFAULT.seed if validset != testset else None,
-            ckp_metric   = cfg.TRAIN.ckp_metric if validset != testset else None,
             **cfg.TRAIN.get('params', {})
         )
         
         # save model
-        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}.pt"))
+        if cfg.MODEL.name == 'VPTAL':
+            torch.save(model.prompt.state_dict(), os.path.join(savedir, f"prompt_seed{cfg.DEFAULT.seed}-round{r}.pt"))
+        else:
+            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
 
-        # load best checkpoint 
-        if validset != testset:
-            model.load_state_dict(torch.load(os.path.join(savedir, f'model_seed{cfg.DEFAULT.seed}_best.pt')))
+        # aggretate previous weights
+        if cfg.AL.strategy == 'PromptEnsemble' and cfg.TRAIN.get('ensemble', False):
+            prompt_weights = PromptEnsemble.weights_average(r=r+1, seed=cfg.DEFAULT.seed, savedir=savedir, weights=strategy.weights)
+            model.prompt.load_state_dict(prompt_weights)
 
-        
         # ====================
         # validation results
         # ====================
         
-        eval_results = test(
+        if validset != testset:
+            eval_results = test(
+                model            = model, 
+                query_model      = query_model,
+                dataloader       = validloader, 
+                criterion        = strategy.loss_fn, 
+                log_interval     = cfg.TRAIN.log_interval,
+                return_per_class = True,
+                name             = 'VALID'
+            )
+
+            # save results per class
+            metrics_log_eval.update({
+                f'round{r}': eval_results['per_class']
+            })
+            json.dump(
+                obj    = metrics_log_eval, 
+                fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_valid-per_class.json"), 'w'), 
+                cls    = MyEncoder,
+                indent = '\t'
+            )
+            
+            del eval_results['per_class']
+            
+            # save results 
+            log_metrics = {'round':r}
+            log_metrics.update([(k, v) for k, v in eval_results.items()])
+            log_df_valid = pd.concat([log_df_valid, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
+            
+            log_df_valid.round(4).to_csv(
+                os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_valid.csv"),
+                index=False
+            )   
+
+        # ====================
+        # test results
+        # ====================
+        
+        test_results = test(
             model            = model, 
-            dataloader       = validloader, 
+            query_model      = query_model,
+            dataloader       = testloader, 
             criterion        = strategy.loss_fn, 
             log_interval     = cfg.TRAIN.log_interval,
-            return_per_class = True,
-            name             = 'VALID'
+            return_per_class = True
         )
 
         # save results per class
-        metrics_log_eval.update({
-            f'round{r}': eval_results['per_class']
+        metrics_log_test.update({
+            f'round{r}': test_results['per_class']
         })
         json.dump(
-            obj    = metrics_log_eval, 
-            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_best-per_class.json"), 'w'), 
+            obj    = metrics_log_test, 
+            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_test-per_class.json"), 'w'), 
             cls    = MyEncoder,
             indent = '\t'
         )
         
-        del eval_results['per_class']
+        del test_results['per_class']
         
         # save results 
         log_metrics = {'round':r}
-        log_metrics.update([(k, v) for k, v in eval_results.items()])
-        log_df_valid = pd.concat([log_df_valid, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
+        log_metrics.update([(k, v) for k, v in test_results.items()])
+        log_df_test = pd.concat([log_df_test, pd.DataFrame(log_metrics, index=[len(log_df_test)])], axis=0)
         
-        log_df_valid.round(4).to_csv(
-            os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_best.csv"),
+        log_df_test.round(4).to_csv(
+            os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_test.csv"),
             index=False
         )   
+        
+        
+        _logger.info('append result [shape: {}]'.format(log_df_test.shape))
+        
+        wandb.finish()
+        
+        
+        
+def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
+
+    # set active learning arguments
+    nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
+    
+    if nb_round % int(nb_round) != 0:
+        nb_round = int(nb_round) + 1
+    else:
+        nb_round = int(nb_round)
+    
+    # logging
+    _logger.info('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {} [OOD ratio] {}'.format(
+        len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round, cfg.AL.ood_ratio))
+    
+    # create ID and OOD targets
+    trainset, id_targets = create_id_ood_targets(
+        dataset     = trainset,
+        nb_id_class = cfg.AL.nb_id_class,
+        seed        = cfg.DEFAULT.seed
+    )
+    validset, id_targets_check = create_id_ood_targets(
+        dataset     = validset,
+        nb_id_class = cfg.AL.nb_id_class,
+        seed        = cfg.DEFAULT.seed
+    )
+    assert sum(id_targets == id_targets_check) == cfg.AL.nb_id_class, "ID targets are not matched"
+    testset, id_targets_check = create_id_ood_targets(
+        dataset     = testset,
+        nb_id_class = cfg.AL.nb_id_class,
+        seed        = cfg.DEFAULT.seed
+    )
+    assert sum(id_targets == id_targets_check) == cfg.AL.nb_id_class, "ID targets are not matched"
+    
+    # inital sampling labeling
+    is_labeled, is_unlabeled = create_is_labeled_unlabeled(
+        trainset   = trainset,
+        id_targets = id_targets,
+        size       = cfg.AL.n_start,
+        ood_ratio  = cfg.AL.ood_ratio,
+        seed       = cfg.DEFAULT.seed
+    )
+    
+    # load model
+    _, model = create_model(
+        modelname   = cfg.MODEL.name,
+        num_classes = cfg.DATASET.num_classes, 
+        pretrained  = cfg.MODEL.pretrained, 
+        **cfg.MODEL.get('params',{})
+    )
+    
+    # load visual classifier
+    vis_clf, process_train, process_test = load_model(
+        model_type  = cfg.CLIPN.model_type, 
+        pre_train   = cfg.CLIPN.ckp_path, 
+        prompt_path = cfg.CLIPN.prompt_path, 
+        classes     = trainset.classes[id_targets]
+    )
+    
+    # CLIPN AL
+    if 'metric_params' in cfg.CLIPN:
+        cfg.CLIPN.metric_params.savedir = savedir
+        cfg.CLIPN.metric_params.seed = cfg.DEFAULT.seed
+        
+    openset_strategy = CLIPNAL(
+        vis_clf         = vis_clf,
+        train_transform = process_train,
+        test_transform  = process_test,
+        num_id_classes  = len(id_targets),
+        dataset         = trainset,
+        batch_size      = cfg.CLIPN.batch_size,
+        num_workers     = cfg.DATASET.num_workers,
+        is_labeled      = is_labeled,
+        is_unlabeled    = is_unlabeled,
+        use_sim         = cfg.CLIPN.use_sim,
+        metric_params   = cfg.CLIPN.get('metric_params', {})
+    )
+    
+    # select strategy    
+    strategy = create_query_strategy(
+        strategy_name   = cfg.AL.strategy, 
+        model           = model,
+        dataset         = trainset, 
+        test_transform  = testset.transform,
+        sampler_name    = cfg.DATASET.sampler_name,
+        is_labeled      = is_labeled, 
+        n_query         = cfg.AL.n_query, 
+        n_subset        = cfg.AL.n_subset,
+        batch_size      = cfg.DATASET.batch_size, 
+        num_workers     = cfg.DATASET.num_workers,
+        params          = cfg.AL.get('params', {})
+    )
+    
+    # define train dataloader
+    trainloader = strategy.get_trainloader()
+    
+    # define log dataframe
+    log_df_valid = pd.DataFrame(
+        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+    )
+    log_df_test = pd.DataFrame(
+        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+    )
+    
+    # query log dataframe
+    query_log_df = pd.DataFrame({'idx': range(len(is_labeled))})
+    query_log_df['query_round'] = None
+    query_log_df.loc[is_labeled, 'query_round'] = 'round0'
+    
+    # number of labeled set log dataframe
+    nb_labeled_df = pd.DataFrame({'round': range(nb_round+1), 'nb_labeled': [0]*(nb_round+1)})
+    nb_labeled_df.loc[nb_labeled_df['round']==0, 'nb_labeled'] = is_labeled.sum()
+    
+    # define dict to save confusion matrix and metrics per class
+    metrics_log_eval = {}
+    metrics_log_test = {}
+    
+    # run
+    for r in range(nb_round+1):
+        
+        if r != 0:    
+            
+            # filtering ID samples from unlabeled samples
+            if cfg.CLIPN.use:
+                id_unlabeled_idx = openset_strategy.predict_id_idx(vis_clf=vis_clf)
+                openset_strategy.check_ood_acc(pred_id_ulb_idx=id_unlabeled_idx, savedir=savedir)
+            else:
+                id_unlabeled_idx = np.where(openset_strategy.is_unlabeled==True)[0]
+                
+            # query sampling    
+            query_params = {'unlabeled_idx': id_unlabeled_idx}
+            query_idx = strategy.query(model, **query_params)
+            
+            # update query
+            id_query_idx = openset_strategy.update(query_idx)
+            strategy.update(id_query_idx)
+            
+            # query_idx resampling
+            if strategy.use_resampler:
+                strategy.resampler(model)
+            
+            # get trainloader
+            del trainloader
+            trainloader = strategy.get_trainloader()
+            
+            # save query index
+            query_log_df.loc[id_query_idx, 'query_round'] = f'round{r}'
+            query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
+            
+            # save nb_labeled
+            nb_labeled_df.loc[nb_labeled_df['round']==r, 'nb_labeled'] = strategy.is_labeled.sum()
+            nb_labeled_df.to_csv(os.path.join(savedir, 'nb_labeled.csv'), index=False)
+            
+            # clean memory
+            del optimizer, scheduler, validloader, testloader
+            if not cfg.AL.continual:
+                del model
+            if cfg.CLIPN.use:
+                del vis_clf
+                
+            accelerator.free_memory()
+            
+        # logging
+        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(is_labeled)))
+        
+        # build Model
+        if cfg.CLIPN.use:
+            vis_clf = openset_strategy.init_model()
+            
+        if not cfg.AL.get('continual', False) or r == 0:
+            model = strategy.init_model()
+        
+        # optimizer
+        optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+
+        # scheduler
+        scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
+
+        # define test dataloader
+        validloader = create_id_testloader(
+            dataset     = validset,
+            id_targets  = id_targets,
+            batch_size  = cfg.DATASET.test_batch_size,
+            num_workers = cfg.DATASET.num_workers    
+        )
+        testloader = create_id_testloader(
+            dataset     = testset,
+            id_targets  = id_targets,
+            batch_size  = cfg.DATASET.test_batch_size,
+            num_workers = cfg.DATASET.num_workers    
+        )
+        
+        # prepraring accelerator
+        model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+            model, optimizer, trainloader, validloader, testloader, scheduler
+        )
+        
+        if cfg.CLIPN.use:
+            vis_clf = accelerator.prepare(vis_clf)
+        
+        # initialize wandb
+        if cfg.TRAIN.wandb.use:
+            wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
+
+        torch_seed(cfg.DEFAULT.seed)
+        # fitting model
+        fit(
+            model        = model, 
+            trainloader  = trainloader, 
+            testloader   = None, 
+            criterion    = strategy.loss_fn, 
+            optimizer    = optimizer, 
+            scheduler    = scheduler,
+            accelerator  = accelerator,
+            epochs       = cfg.TRAIN.epochs, 
+            use_wandb    = cfg.TRAIN.wandb.use,
+            log_interval = cfg.TRAIN.log_interval,
+            **cfg.TRAIN.get('params', {})
+        )
+        
+        # save model
+        if cfg.MODEL.name == 'VPTAL':
+            torch.save(model.prompt.state_dict(), os.path.join(savedir, f"prompt_seed{cfg.DEFAULT.seed}-round{r}.pt"))
+        else:
+            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
+
+        # aggretate previous weights
+        if cfg.AL.strategy == 'PromptEnsemble' and cfg.TRAIN.get('ensemble', False):
+            prompt_weights = PromptEnsemble.weights_average(r=r+1, seed=cfg.DEFAULT.seed, savedir=savedir, weights=strategy.weights)
+            model.prompt.load_state_dict(prompt_weights)
+
+        # ====================
+        # validation results
+        # ====================
+        
+        if validset != testset:
+            eval_results = test(
+                model            = model, 
+                dataloader       = validloader, 
+                criterion        = strategy.loss_fn, 
+                log_interval     = cfg.TRAIN.log_interval,
+                return_per_class = True,
+                name             = 'VALID'
+            )
+
+            # save results per class
+            metrics_log_eval.update({
+                f'round{r}': eval_results['per_class']
+            })
+            json.dump(
+                obj    = metrics_log_eval, 
+                fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_valid-per_class.json"), 'w'), 
+                cls    = MyEncoder,
+                indent = '\t'
+            )
+            
+            del eval_results['per_class']
+            
+            # save results 
+            log_metrics = {'round':r}
+            log_metrics.update([(k, v) for k, v in eval_results.items()])
+            log_df_valid = pd.concat([log_df_valid, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
+            
+            log_df_valid.round(4).to_csv(
+                os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_valid.csv"),
+                index=False
+            )   
 
         # ====================
         # test results
@@ -653,7 +1032,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         })
         json.dump(
             obj    = metrics_log_test, 
-            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}-per_class.json"), 'w'), 
+            fp     = open(os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_test-per_class.json"), 'w'), 
             cls    = MyEncoder,
             indent = '\t'
         )
@@ -663,10 +1042,10 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         # save results 
         log_metrics = {'round':r}
         log_metrics.update([(k, v) for k, v in test_results.items()])
-        log_df_test = pd.concat([log_df_test, pd.DataFrame(log_metrics, index=[len(log_df_valid)])], axis=0)
+        log_df_test = pd.concat([log_df_test, pd.DataFrame(log_metrics, index=[len(log_df_test)])], axis=0)
         
         log_df_test.round(4).to_csv(
-            os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}.csv"),
+            os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_test.csv"),
             index=False
         )   
         

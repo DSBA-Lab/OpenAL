@@ -1,15 +1,16 @@
 import os
 import wandb
 import logging
-from arguments import parser
-
-from train import al_run, full_run
-from datasets import create_dataset
-from log import setup_default_logging
-from utils import torch_seed
 
 from accelerate import Accelerator
 from omegaconf import OmegaConf
+
+from arguments import parser
+from train import al_run, openset_al_run, full_run
+from datasets import create_dataset
+from log import setup_default_logging
+from query_strategies import torch_seed
+
 
 _logger = logging.getLogger('train')
 
@@ -38,7 +39,7 @@ def run(cfg):
         **cfg.DATASET.get('params', {})
     )
     
-    if 'AL' in cfg.keys():
+    if 'AL' in cfg:
         # make save directory
         al_name = f"total_{cfg.AL.n_end}-init_{cfg.AL.n_start}-query_{cfg.AL.n_query}"
         savedir = os.path.join(
@@ -53,14 +54,24 @@ def run(cfg):
         OmegaConf.save(cfg, os.path.join(savedir, 'configs.yaml'))
         
         # run active learning
-        al_run(
-            cfg         = cfg,
-            trainset    = trainset,
-            validset    = validset,
-            testset     = testset,
-            savedir     = savedir,
-            accelerator = accelerator,
-        )
+        if 'ood_ratio' in cfg.AL:
+            openset_al_run(
+                cfg         = cfg,
+                trainset    = trainset,
+                validset    = validset,
+                testset     = testset,
+                savedir     = savedir,
+                accelerator = accelerator,
+            )        
+        else:
+            al_run(
+                cfg         = cfg,
+                trainset    = trainset,
+                validset    = validset,
+                testset     = testset,
+                savedir     = savedir,
+                accelerator = accelerator,
+            )
     else:
         # make save directory
         savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 'Full', cfg.DEFAULT.exp_name)
