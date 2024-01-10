@@ -1,0 +1,6 @@
+AL:
+  strategy: PromptEnsemble
+  params:
+    agg_type: mean
+    ensemble_type: avg
+    weights: 0.5

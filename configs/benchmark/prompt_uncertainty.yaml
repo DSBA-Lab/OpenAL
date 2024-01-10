@@ -1,0 +1,4 @@
+AL:
+  strategy: PromptUncertainty
+  params:
+    loss_weight: 1.0

@@ -8,35 +8,39 @@ DATASET:
   num_workers: 12
   sampler_name: SubsetRandomSampler
   aug_info:
-    - RandomCrop
+    - RandomResizedCrop
     - RandomHorizontalFlip
 OPTIMIZER:
-  name: SGD
+  name: AdamW
   lr: 0.1
+  params:
+    weight_decay: 0.0005
 SCHEDULER:
   name: cosine_annealing
   params:
     t_mult: 1
     eta_min: 0.00001
 TRAIN:
-  epochs: 50
+  epochs: 100
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
   wandb:
     use: true
-    entity: dsba-al-2023
-    project_name: Active Learning - Benchmark
+    entity: tootouch
+    project_name: AL - generalization
   params:
     metrics_off: false
+LOSS:
+  name: CrossEntropyLoss
 MODEL:
-  name: resnet18
+  name: vit_small_patch8_224
   pretrained: false
 AL:
-  n_start: 1000
-  n_query: 500
-  n_end: 10000
+  n_start: 100
+  n_query: 100
+  n_end: 2000
   n_subset: 0
   init:
-    method: random_select
+    method: stratified_random_select
   continual: false
