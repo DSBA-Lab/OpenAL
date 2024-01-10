@@ -8,9 +8,9 @@ class LeastConfidence(Strategy):
         
         super(LeastConfidence, self).__init__(**init_args)
     
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # predict probability on unlabeled dataset
         probs = self.extract_outputs(
@@ -20,6 +20,7 @@ class LeastConfidence(Strategy):
         
         # select least confidence
         max_confidence = probs.max(1)[0]
-        select_idx = unlabeled_idx[max_confidence.sort()[1][:self.n_query]]
+        q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
+        select_idx = unlabeled_idx[max_confidence.sort()[1][q_idx]]
         
         return select_idx

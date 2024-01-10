@@ -123,13 +123,14 @@ class LearningLossAL(Strategy):
         out_features: int = 128, in_layer: bool = False, channel_last: bool = False, **init_args):
         
         model = LearningLossModel(
-            backbone         = model, 
+            backbone         = init_args['model'], 
             layer_ids        = layer_ids, 
             in_features_list = in_features_list, 
             out_features     = out_features,
             in_layer         = in_layer,
             channel_last     = channel_last
         )
+        del init_args['model']
         
         super(LearningLossAL, self).__init__(model=model, **init_args)
         
@@ -138,9 +139,9 @@ class LearningLossAL(Strategy):
         self.loss_weight = loss_weight
     
     
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # predict loss-prediction on unlabeled dataset
         loss_pred = self.extract_outputs(
@@ -149,7 +150,8 @@ class LearningLossAL(Strategy):
         )
         
         # select loss
-        select_idx = unlabeled_idx[loss_pred.sort(descending=True)[1][:self.n_query]]
+        q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
+        select_idx = unlabeled_idx[loss_pred.sort(descending=True)[1][q_idx]]
         
         return select_idx
     

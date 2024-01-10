@@ -25,9 +25,9 @@ class BALD(Strategy):
         E = -torch.mean(torch.sum(outputs * torch.log(outputs + 1e-10), dim=2), dim=0)
         return H, E
         
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # predict probability on unlabeled dataset
         H, E_H = self.shannon_entropy_function(model=model, unlabeled_idx=unlabeled_idx)

@@ -1,21 +1,94 @@
-from sklearn.model_selection import train_test_split
+import random
 import numpy as np
-from torch.utils.data import Dataset
-
-import os
 import pandas as pd
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset, DataLoader
+
+from .sampler import SubsetSequentialSampler
+from .utils import get_target_from_dataset, torch_seed
 
 
-def create_labeled_index(method: str, trainset: Dataset, size: int, seed: int, **kwargs):
+def create_id_testloader(dataset, id_targets: np.ndarray, batch_size: int, num_workers: int):
+    id_idx = [i for i in range(len(dataset.targets)) if dataset.targets[i] < len(id_targets)]
+        
+    sampler = SubsetSequentialSampler(indices=id_idx)
+    
+    dataloader = DataLoader(
+        dataset     = dataset,
+        sampler     = sampler,
+        batch_size  = batch_size,
+        num_workers = num_workers
+    )
+
+    return dataloader
+
+def create_id_ood_targets(dataset, nb_id_class: int, seed: int):
+    
+    torch_seed(seed)
+    id_targets = np.random.choice(a=range(len(dataset.classes)), size=nb_id_class, replace=False)
+    target_map = dict(zip(id_targets, np.arange(len(id_targets))))
+    
+    new_targets = []
+    targets = get_target_from_dataset(dataset=dataset)
+    for t in targets:
+        if t in target_map:
+            new_targets.append(target_map[t])
+        else:
+            new_targets.append(len(target_map))
+            
+    dataset.targets = np.array(new_targets)
+    
+    return dataset, id_targets
+
+
+def create_is_labeled_unlabeled(trainset, id_targets: np.ndarray, size: int, ood_ratio: float, seed: int):
+    '''
+    Args:
+    - trainset (torch.utils.data.Dataset): trainset
+    - id_targets (np.ndarray): ID targets
+    - size (int): represents the absolute number of train samples. 
+    - ood_ratio (float): OOD class ratio
+    - seed (int): seed for random state
+    
+    Return:
+    - labeled_idx (np.ndarray): selected labeled indice
+    - unlabeled_idx (np.ndarray): selected unlabeled indice
+    '''
+    
+    torch_seed(seed)
+
+    id_total_idx = [i for i in range(len(trainset.targets)) if trainset.targets[i] < len(id_targets)]
+    ood_total_idx = [i for i in range(len(trainset.targets)) if trainset.targets[i] >= len(id_targets)]
+
+    n_ood = round(len(id_total_idx) * (ood_ratio / (1 - ood_ratio)))
+    ood_total_idx = random.sample(ood_total_idx, n_ood)
+    print("# Total ID: {}, OOD: {}".format(len(id_total_idx), len(ood_total_idx)))
+
+    lb_idx = random.sample(id_total_idx, int(size * (1 - ood_ratio)))
+    ood_start_idx = random.sample(ood_total_idx, int(size * ood_ratio))
+    ulb_idx = list(set(id_total_idx + ood_total_idx) - set(lb_idx) - set(ood_start_idx))
+    print("# Labeled in: {}, ood: {}, Unlabeled: {}".format(len(lb_idx), len(ood_start_idx), len(ulb_idx)))
+
+    # defined empty labeled index
+    is_labeled = np.zeros(len(trainset), dtype=bool)
+    is_unlabeled = np.zeros(len(trainset), dtype=bool)
+
+    is_labeled[lb_idx] = True
+    is_unlabeled[ulb_idx] = True
+
+    return is_labeled, is_unlabeled
+
+
+def create_is_labeled(method: str, trainset: Dataset, size: int, seed: int, **kwargs):
     '''
     Args:
     - method (str): 
-    - sample_idx (list): data indice
+    - trainset (torch.utils.data.Dataset): trainset
     - size (int): represents the absolute number of train samples. 
     - seed (int): seed for random state
     
     Return:
-    - labeled_idx (list): selected indice
+    - labeled_idx (np.ndarray): selected indice
     '''
     
     sample_idx = np.arange(len(trainset))
@@ -24,31 +97,14 @@ def create_labeled_index(method: str, trainset: Dataset, size: int, seed: int, *
         kwargs['stratify'] = get_target_from_dataset(dataset=trainset)
     
     # defined empty labeled index
-    labeled_idx = np.zeros_like(sample_idx, dtype=bool)
+    is_labeled = np.zeros_like(sample_idx, dtype=bool)
     
     # selected index
     selected_idx = eval(method)(sample_idx=sample_idx, size=size, seed=seed, **kwargs)
-    labeled_idx[selected_idx] = True
     
-    return labeled_idx
-
-def get_target_from_dataset(dataset):
-    # if class name is ALDataset
-    if dataset.__class__.__name__ == "ALDataset":
-        targets = dataset.data_info.label.values
-    else:
-       # attribution name list in benchmark dataset class
-        target_attrs = ['targets', 'labels'] # TODO: if target attribution name is added, append in this line.
-
-        # iterativly check attribution name if not False else break
-        for attr in target_attrs:
-            targets = getattr(dataset, attr, False)
-            if targets is not False:
-                break
-
-    if not isinstance(targets, np.ndarray):
-        targets = np.array(targets)
-    return targets
+    is_labeled[selected_idx] = True
+    
+    return is_labeled
 
 
 def random_select(sample_idx: list, size: int, seed: int):

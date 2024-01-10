@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from copy import deepcopy
-from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from .strategy import Strategy
 
@@ -10,9 +9,9 @@ class KCenterGreedy(Strategy):
         
         super(KCenterGreedy, self).__init__(**init_args)
         
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # predict probability and embedding on unlabeled dataset
         ulb_embed = self.extract_outputs(
@@ -27,7 +26,7 @@ class KCenterGreedy(Strategy):
         # predict probability and embedding on labeled dataset
         lb_embed = self.extract_outputs(
             model        = model, 
-            sample_idx   = np.where(self.labeled_idx==True)[0], 
+            sample_idx   = np.where(self.is_labeled==True)[0], 
             return_probs = False,
             return_embed = True
         )['embed']
@@ -46,7 +45,7 @@ class KCenterGreedy(Strategy):
     def greedy_selection(self, mat: torch.Tensor, ulb_embed: torch.Tensor):
         # K-center greedy
         selected_idx = []
-        labeled_idx = deepcopy(self.labeled_idx)
+        is_labeled = deepcopy(self.is_labeled)
         
         pbar = tqdm(range(self.n_query), desc=f"K-center Greedy: {mat.shape}")
         
@@ -58,10 +57,10 @@ class KCenterGreedy(Strategy):
             q_idx_ = mat_min.argmax().item()
             
             # find index from unlabeled pool
-            q_idx = np.arange(len(self.labeled_idx))[labeled_idx==False][q_idx_]
+            q_idx = np.arange(len(self.is_labeled))[is_labeled==False][q_idx_]
             
             # change selected index into labeled pool
-            labeled_idx[q_idx] = True
+            is_labeled[q_idx] = True
             selected_idx.append(q_idx)
             
             # delete selected index from distance matrix
@@ -107,9 +106,10 @@ class KCenterGreedyCB(KCenterGreedy):
         
         super(KCenterGreedyCB, self).__init__(**init_params)
         
-    def query(self, model) -> np.ndarray:
+    def query(self, model, unlabeled_idx: np.ndarray = None) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        if unlabeled_idx == None:
+            unlabeled_idx = self.get_unlabeled_idx()
         
         # predict probability and embedding on unlabeled dataset
         ulb_outputs = self.extract_outputs(
@@ -125,7 +125,7 @@ class KCenterGreedyCB(KCenterGreedy):
         # predict probability and embedding on labeled dataset
         lb_outputs = self.extract_outputs(
             model         = model, 
-            sample_idx    = np.where(self.labeled_idx==True)[0], 
+            sample_idx    = np.where(self.is_labeled==True)[0], 
             return_probs  = False,
             return_embed  = True,
             return_labels = True
@@ -154,7 +154,7 @@ class KCenterGreedyCB(KCenterGreedy):
         # Class-balance K-center greedy
         
         selected_idx = []
-        labeled_idx = deepcopy(self.labeled_idx)
+        is_labeled = deepcopy(self.is_labeled)
         
         # the number of samples per class
         _, counts = torch.unique(lb_labels, return_counts=True)
@@ -194,14 +194,14 @@ class KCenterGreedyCB(KCenterGreedy):
             q_idx_ = (-mat_min + (lamb / num_classes) * l1_loss).argmin().item()
             
             # find index from unlabeled pool
-            q_idx = np.arange(len(self.labeled_idx))[labeled_idx==False][q_idx_]
+            q_idx = np.arange(len(self.is_labeled))[is_labeled==False][q_idx_]
         
             # change selected index into unlabeled pool
             z_idx = np.arange(z.size(0))[z==False][q_idx_]
             z[z_idx] = True
             
             # change selected index into labeled pool
-            labeled_idx[q_idx] = True
+            is_labeled[q_idx] = True
             selected_idx.append(q_idx)
             
             # delete selected index from probs of unlabeled samples

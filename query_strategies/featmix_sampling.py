@@ -21,11 +21,12 @@ class AlphaMixSampling(Strategy):
         # the number of samples is selected by random sampling because the number of candidates is smalleer then the number of query
         self.remain = 0
 
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         device = next(model.parameters()).device
         
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
+            
         # predict probability and embedding on unlabeled dataset
         ulb_outputs = self.extract_outputs(
             model        = model, 
@@ -41,7 +42,7 @@ class AlphaMixSampling(Strategy):
         # predict probability and embedding on labeled dataset
         lb_outputs = self.extract_outputs(
             model         = model, 
-            sample_idx    = np.where(self.labeled_idx==True)[0],
+            sample_idx    = np.where(self.is_labeled==True)[0],
             return_probs  = False,
             return_embed  = True,
             return_labels = True
@@ -118,9 +119,9 @@ class AlphaMixSampling(Strategy):
                 self.remained = self.n_query - len(selected_idx)
                 
                 # copy labeled index to sample an insufficient number from unlabeled index
-                labeled_idx = copy.deepcopy(self.labeled_idx)
-                labeled_idx[selected_idx] = True
-                selected_idx = np.concatenate([selected_idx, np.random.choice(np.where(self.labeled_idx == False)[0], self.remained)])
+                is_labeled = copy.deepcopy(self.is_labeled)
+                is_labeled[selected_idx] = True
+                selected_idx = np.concatenate([selected_idx, np.random.choice(np.where(self.is_labeled == False)[0], self.remained)])
 
         setattr(self, 'min_alphas', min_alphas)
 

@@ -12,9 +12,9 @@ class MeanSTDSampling(Strategy):
         super(MeanSTDSampling, self).__init__(**init_args)
         self.num_mcdropout = num_mcdropout
           
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # outputs: (num_mcdropout x samples x num_classes)
         outputs = self.extract_outputs(

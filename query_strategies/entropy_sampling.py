@@ -8,9 +8,9 @@ class EntropySampling(Strategy):
         
         super(EntropySampling, self).__init__(**init_args)
         
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # predict probability on unlabeled dataset
         probs = self.extract_outputs(
@@ -20,6 +20,7 @@ class EntropySampling(Strategy):
         
         # select maximum entropy
         entropy = (-(probs*torch.log(probs))).sum(dim=1)
-        select_idx = unlabeled_idx[entropy.sort(descending=True)[1][:self.n_query]]
+        q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
+        select_idx = unlabeled_idx[entropy.sort(descending=True)[1][q_idx]]
         
         return select_idx

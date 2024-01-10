@@ -3,23 +3,32 @@ from scipy import stats
 from copy import deepcopy as deepcopy
 import torch
 import torch.nn.functional as F 
+from torchvision import transforms
 from torch.utils.data import DataLoader
-
+from tqdm.auto import tqdm
 from .strategy import Strategy
 from .sampler import SubsetSequentialSampler
 
 class BADGE(Strategy):
-    def __init__(self, **init_args):
+    def __init__(self, n_samples: int = 1, add_noise: bool = False, **init_args):
+        super(BADGE, self).__init__(**init_args)        
+        self.n_samples = n_samples    
+        self.add_noise = add_noise
         
-        super(BADGE, self).__init__(**init_args)            
+    def get_grad_embedding(self, model, unlabeled_idx: np.ndarray, add_noise: bool = False) -> torch.Tensor:
+        transform = transforms.Compose(self.test_transform.transforms[:-1])
+        normalize = transforms.Compose([self.test_transform.transforms[-1]])
+    
+        # copy dataset
+        dataset = deepcopy(self.dataset)
+        dataset.transform = transform
         
-    def get_grad_embedding(self, model, unlabeled_idx: np.ndarray) -> torch.Tensor:
         # define sampler
         sampler = SubsetSequentialSampler(indices=unlabeled_idx)
         
         # unlabeled dataloader
         dataloader = DataLoader(
-            dataset     = self.dataset,
+            dataset     = dataset,
             batch_size  = self.batch_size,
             sampler     = sampler,
             num_workers = self.num_workers
@@ -33,11 +42,16 @@ class BADGE(Strategy):
         
         model.eval()
         with torch.no_grad():
-            for idx, (imgs,y) in enumerate(dataloader):
+            for idx, (imgs,y) in tqdm(enumerate(dataloader), total=len(dataloader), desc='get grads', leave=False):
                 idxs = np.arange(idx* dataloader.batch_size, (idx+1) * dataloader.batch_size)
                 
+                # add noise
+                if add_noise:
+                    imgs = imgs + torch.FloatTensor(np.random.normal(loc=0.5, scale=0.1, size=imgs.size()))
+                
+                imgs = normalize(imgs)
                 x = model.forward_features(imgs.to(device))
-                emb = pooling_embedding(x) # used to calculate gradient embedding 
+                emb = self.pooling_embedding(x) # used to calculate gradient embedding 
                 out = model.forward_head(x) 
                 
                 emb = emb.data.cpu().numpy()
@@ -53,12 +67,20 @@ class BADGE(Strategy):
                             embedding[idxs[j]][embDim * c : embDim * (c+1)] = deepcopy(emb[j]) * (-1 * batchprobs[j][c]) # gradient embedding : differentiation of CrossEntropy = (p-I(y=i)) * z(x;V); p=0, z(x;V)=emb
             return torch.Tensor(embedding)
 
-    def query(self, model) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # get gradients of embedding
-        gradEmbedding = self.get_grad_embedding(model=model, unlabeled_idx=unlabeled_idx)
+        if self.add_noise:
+            grads = []
+            for _ in tqdm(range(self.n_samples), desc='Noise BADGE', leave=False):
+                gradEmbedding = self.get_grad_embedding(model=model, unlabeled_idx=unlabeled_idx, add_noise=self.add_noise)
+                grads.append(gradEmbedding)
+            gradEmbedding = torch.stack(grads).mean(dim=0)
+        else:
+            gradEmbedding = self.get_grad_embedding(model=model, unlabeled_idx=unlabeled_idx, add_noise=self.add_noise)
+        
         chosen = init_centers(X=gradEmbedding, K=self.n_query)
         
         select_idx = unlabeled_idx[chosen]        
@@ -108,17 +130,4 @@ def init_centers(X: torch.Tensor, K: int = None):
     return indsAll
 
 
-def pooling_embedding(x):
-    '''
-    dim : Target dimension for pooling 
-    mean : Average Pooling 
-    '''
-    if np.argmax(list(x.shape)) == 1:   # x shape : NCHW  -> for Resnet 
-        dim = (2,3)
-        emb = x.mean(dim)
-    elif np.argmax(list(x.shape)) == 3: # x shape : NHWC -> for Swin-Transformer 
-        dim = (1,2)
-        emb = x.mean(dim)
-    elif len(x.shape) == 3: # x shape : NTC -> for ViT 
-        emb = x[:,0,:]      # cls token 
-    return emb 
+
