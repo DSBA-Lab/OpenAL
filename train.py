@@ -20,7 +20,7 @@ from query_strategies import create_query_strategy, create_is_labeled, create_id
 from query_strategies.prompt_ensemble import PromptEnsemble
 from query_strategies.clipn_al import CLIPNAL
 from models import create_model
-from utils import NoIndent, MyEncoder
+from query_strategies.utils import NoIndent, MyEncoder
 from omegaconf import OmegaConf
 
 _logger = logging.getLogger('train')
@@ -807,7 +807,6 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
     
     # CLIPN AL
     if 'metric_params' in cfg.CLIPN:
-        cfg.CLIPN.metric_params.savedir = savedir
         cfg.CLIPN.metric_params.seed = cfg.DEFAULT.seed
         
     openset_strategy = CLIPNAL(
@@ -820,6 +819,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         num_workers     = cfg.DATASET.num_workers,
         is_labeled      = is_labeled,
         is_unlabeled    = is_unlabeled,
+        savedir         = savedir,
         use_sim         = cfg.CLIPN.use_sim,
         metric_params   = cfg.CLIPN.get('metric_params', {})
     )
