@@ -1,25 +1,24 @@
 import os
 import json
-import random
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torch.utils.data import DataLoader, Dataset
-from PIL import Image
-from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
+from sklearn.metrics import confusion_matrix
 from tqdm.auto import tqdm
 from copy import deepcopy
 
+from query_strategies.metric_learning import create_metric_learning
 from .sampler import SubsetSequentialSampler
-from .utils import get_target_from_dataset, torch_seed
+from .utils import get_target_from_dataset, NoIndent, MyEncoder
 
 class CLIPNAL(nn.Module):
     def __init__(
         self, vis_clf, train_transform, test_transform, num_id_classes: int,
         dataset, batch_size: int, num_workers: int, is_labeled: np.ndarray, is_unlabeled: np.ndarray, 
-        use_sim: bool = False, metric_params: dict = {}):
+        savedir: str, use_sim: bool = False, metric_params: dict = {}):
         super().__init__()
         
         self.num_id_classes = num_id_classes
@@ -36,23 +35,24 @@ class CLIPNAL(nn.Module):
         self.is_labeled = is_labeled
         self.is_unlabeled = is_unlabeled
         
+        self.savedir = savedir
         self.use_sim = use_sim
         self.use_metric_learning = metric_params.get('use', False)
         if self.use_metric_learning:
-            self.metric_learning = MetricLearning(
-                vis_encoder     = deepcopy(self.vis_clf.image_encoder), 
+            self.metric_learning = create_metric_learning(
+                method_name     = metric_params['method_name'],
+                vis_encoder     = SupConModel(image_encoder=deepcopy(self.vis_clf.image_encoder)), 
                 criterion       = nn.CrossEntropyLoss(), 
-                X               = self.dataset.data[is_labeled], 
-                y               = self.dataset.targets[is_labeled], 
                 epochs          = metric_params['epochs'], 
                 train_transform = train_transform, 
                 test_transform  = test_transform,
                 test_ratio      = metric_params['test_ratio'], 
                 opt_name        = metric_params['opt_name'], 
                 lr              = metric_params['lr'], 
-                savedir         = metric_params['savedir'], 
+                savedir         = savedir, 
                 seed            = metric_params['seed'], 
-                opt_params      = metric_params['opt_params']
+                opt_params      = metric_params['opt_params'],
+                **metric_params.get('train_params', {})
             )
     
     def init_model(self):
@@ -84,6 +84,9 @@ class CLIPNAL(nn.Module):
         id_acc = (y_pred[id_idx] == y_true[id_idx]).sum() / len(id_idx)
         ood_acc = (y_pred[ood_idx] == y_true[ood_idx]).sum() / len(ood_idx)
     
+        # confusion matrix
+        cm = confusion_matrix(y_true=y_true, y_pred=y_pred)
+    
         # save results
         savepath = os.path.join(savedir, 'ood_results.json')
         r = {}
@@ -91,15 +94,50 @@ class CLIPNAL(nn.Module):
             r = json.load(open(savepath, 'r'))
 
         r[f'round{len(r)}'] = {
+            'cm': [NoIndent(elem) for elem in cm.tolist()],
             'acc': {
                 'total' : total_acc, 
                 'id'    : id_acc, 
                 'ood'   : ood_acc, 
             },
             'num_samples': {
-                'total'    : nb_ulb, 
-                'id'     : len(id_idx), 
-                'ood'    : len(ood_idx)   
+                'total' : nb_ulb, 
+                'id'    : len(id_idx), 
+                'ood'   : len(ood_idx)   
+            }
+        }
+        
+        json.dump(r, open(savepath, 'w'), cls=MyEncoder, indent='\t')
+        
+    def check_sim_acc(self, y_pred: np.ndarray, savedir: str):
+        
+        # get unlabeled targets
+        ulb_idx = np.where(self.is_unlabeled==True)[0]
+        targets = get_target_from_dataset(self.dataset)
+        y_true = targets[ulb_idx]
+        
+        # get ID and OOD index from unlabeled samples
+        id_idx = [i for i, t in enumerate(y_true) if t < self.num_id_classes]
+        ood_idx = [i for i, t in enumerate(y_true) if t == self.num_id_classes]
+        nb_ulb = len(id_idx) + len(ood_idx)
+               
+        # calc acc
+        id_acc = (y_pred[id_idx] == y_true[id_idx]).sum() / len(id_idx)
+    
+        # save results
+        savepath = os.path.join(savedir, 'sim_results.json')
+        r = {}
+        if os.path.isfile(savepath):
+            r = json.load(open(savepath, 'r'))
+
+        r[f'round{len(r)}'] = {
+            'acc': {
+                'id' : id_acc, 
+            },
+            'num_samples': {
+                'total' : nb_ulb, 
+                'id'    : len(id_idx), 
+                'ood'   : len(ood_idx)   
             }
         }
         
@@ -206,7 +244,12 @@ class CLIPNAL(nn.Module):
         # set visual encoder
         if self.use_metric_learning:
             vis_encoder = self.metric_learning.init_model(device=device)
-            self.metric_learning.fit(vis_encoder=vis_encoder, device=device)
+            self.metric_learning.fit(
+                vis_encoder = vis_encoder,
+                dataset     = self.dataset,
+                sample_idx  = np.where(self.is_labeled==True)[0],
+                device      = device
+            )
         else:
             vis_encoder = vis_clf.image_encoder
         
@@ -216,16 +259,19 @@ class CLIPNAL(nn.Module):
         # using similarity score per class
         if self.use_sim or self.use_metric_learning:
             img_embed_lb_c = self.get_labeled_cls_features(vis_encoder=vis_encoder, device=device)
-            score_c = img_embed_ulb @ img_embed_lb_c.t() # temperature 100
-            logits_yes_sim = logits_yes * score_c.softmax(dim=1)
+            score_c = 100 * img_embed_ulb @ img_embed_lb_c.t() # temperature 100
+            logits_yes = logits_yes * score_c.softmax(dim=1)
+            
+            # check acc
+            self.check_sim_acc(y_pred=score_c.argmax(dim=1).cpu().numpy(), savedir=self.savedir)
         
         # get ID and OOD scores
         ood_score = 1-logits_yes.sum(dim=1) # OOD score
         id_score = logits_yes.max(dim=1)[0] # ID score
         
-        if self.use_sim or self.use_metric_learning:
-            ood_score /= self.num_id_classes # OOD score 
-            id_score = logits_yes_sim.max(dim=1)[0] # ID score
+        # if self.use_sim or self.use_metric_learning:
+        #     # ood_score /= self.num_id_classes # OOD score 
+        #     id_score = logits_yes_sim.max(dim=1)[0] # ID score
         
         # set probs
         probs_id_ood = torch.zeros(len(logits_yes), 2)
@@ -241,219 +287,10 @@ class CLIPNAL(nn.Module):
         pred_id_ulb_idx = np.where(self.is_unlabeled==True)[0][pred_id_idx]
         
         return pred_id_ulb_idx
-        
-        
-
-class MetricLearning:
-    def __init__(
-        self, vis_encoder, criterion, X: np.ndarray, y: np.ndarray, epochs: int, train_transform, test_transform,
-        test_ratio: float, opt_name: str, lr: float, savedir: str, seed: int, opt_params: dict = {}):
-        
-        self.vis_encoder = MetricModel(image_encoder=vis_encoder)
-        self.criterion = criterion
-        self.optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name]
-        self.lr = lr
-        self.opt_params = opt_params
-        
-        self.epochs = epochs
-        self.savedir = savedir
-        self.seed = seed
-        
-        self.create_datasets(X=X, y=y, test_ratio=test_ratio, train_transform=train_transform, test_transform=test_transform)
-
-    def init_model(self, device: str):
-        return deepcopy(self.vis_encoder).to(device)
-        
-    def fit(self, vis_encoder, device: str):
-        acc = 0
-        best_acc = 0
-        best_epoch = 0
-
-        # optimizer
-        optimizer = self.optimizer(vis_encoder.parameters(), lr=self.lr, **self.opt_params)
-
-        desc = '[Metric Learning] Acc: {acc:.2%}, Best Acc: {best_acc:.2%} (best epoch {best_epoch})'
-        p_bar = tqdm(range(self.epochs), total=self.epochs, desc=desc.format(acc=acc, best_acc=best_acc, best_epoch=best_epoch))
-        
-        for epoch in p_bar:
-            self.train(vis_encoder=vis_encoder, optimizer=optimizer, device=device)
-            acc = self.test(vis_encoder=vis_encoder, device=device)
-            
-            if best_acc < acc:
-                # best metrics
-                best_acc = acc
-                best_epoch = epoch
-                
-                # best weights
-                best_weights = deepcopy(vis_encoder.state_dict())
-            
-            p_bar.set_description(desc=desc.format(acc=acc, best_acc=best_acc, best_epoch=best_epoch))
-            
-        # save log
-        self.save_log(best_epoch=best_epoch, best_acc=best_acc)
-        
-        # load best weights
-        vis_encoder.load_state_dict(best_weights)
-    
-    def save_log(self, best_epoch: int, best_acc: float):
-        savepath = os.path.join(self.savedir, 'metric_learning.json')
-        
-        # load saved file
-        r = {}
-        if os.path.isfile(savepath):
-            r = json.load(open(savepath, 'r'))
-        
-        # update
-        r[f'round{len(r)}'] = {'best_epoch': best_epoch, 'best_acc': float(best_acc)}
-        
-        # save results
-        json.dump(r, open(savepath, 'w'))
-        
-        
-    
-    def create_datasets(self, X: np.ndarray, y: np.ndarray, test_ratio: float, train_transform, test_transform):
-        # data split
-        train_idx, test_idx = train_test_split(np.arange(len(X)), test_size=test_ratio, stratify=y)
-        
-        # set trainset        
-        _, train_cls_cnt = np.unique(y[train_idx], return_counts=True)
-        train_num_batch = min(train_cls_cnt)
-
-        trainset = MetricDataset(
-            num_batchs = train_num_batch,
-            data       = X[train_idx], 
-            labels     = y[train_idx], 
-            transform  = train_transform
-        )
-        
-        # set testset
-        _, test_cls_cnt = np.unique(y[test_idx], return_counts=True)
-        test_num_batch = min(test_cls_cnt)
-        test_repeat = 5
-
-        testset = MetricDataset(
-            num_batchs = test_num_batch * test_repeat, 
-            data       = X[test_idx], 
-            labels     = y[test_idx], 
-            transform  = test_transform
-        )
-        
-        # set attributions for trainset and testset
-        setattr(self, 'trainset', trainset)
-        setattr(self, 'testset', testset)
-        
-    
-    def train(self, vis_encoder, optimizer, device: str):
-        total_loss = 0
-        
-        desc = '[TRAIN] Loss: {loss:>6.4f}'
-        p_bar = tqdm(self.trainset, desc=desc.format(loss=total_loss), leave=False)
-        
-        vis_encoder.train()
-        torch_seed(self.seed)
-        for idx, (anchor, positive) in enumerate(p_bar):
-            if idx == len(self.trainset):
-                break
-
-            anchor, positive = anchor.to(device), positive.to(device)
-
-            out_anchor, logit_scale = vis_encoder(anchor, return_logits_scaler=True)
-            out_positive = vis_encoder(positive)
-
-            targets_i = torch.arange(anchor.size(0)).to(device)
-
-            similarity = torch.einsum('ae, pe -> ap', out_anchor, out_positive)
-            similarity = similarity * logit_scale
-            loss = self.criterion(similarity, targets_i)
-
-            total_loss += loss.item()
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            p_bar.set_description(desc=desc.format(loss=total_loss/(idx+1)))
-            
-    
-    def test(self, vis_encoder, device: str):
-        acc = 0
-        total_loss = 0
-        
-        desc = '[TEST] Avg. Acc: {acc:.3%}, Loss: {loss:>6.4f}'
-        p_bar = tqdm(self.testset, desc=desc.format(acc=acc, loss=total_loss), leave=False)
-        
-        vis_encoder.eval()
-        torch_seed(self.seed)
-        with torch.no_grad():
-            for idx, (anchor, positive) in enumerate(p_bar):
-                if idx == len(self.testset):
-                    break
-
-                anchor, positive = anchor.to(device), positive.to(device)
-
-                out_anchor, logit_scale = vis_encoder(anchor, return_logits_scaler=True)
-                out_positive = vis_encoder(positive)
-
-                targets_i = torch.arange(anchor.size(0)).to(device)
-
-                similarity = torch.einsum('ae, pe -> ap', out_anchor, out_positive)
-                similarity = similarity * logit_scale
-                loss = self.criterion(similarity, targets_i)
-
-                total_loss += loss.item()
-
-                acc += targets_i.eq(similarity.argmax(dim=1)).sum() / len(targets_i)
-                
-                p_bar.set_description(desc=desc.format(acc=acc/(idx+1), loss=total_loss/(idx+1)))
-    
-        return acc/(idx+1)
     
     
-class MetricDataset(Dataset):
-    def __init__(self, num_batchs, data, labels, transform=None):
-        self.num_batchs = num_batchs
-        self.data = data
-        self.labels = labels
-        self.transform = transform
-        self.num_classes = len(np.unique(labels))
-        self.class_idx = dict([(c, np.where(labels==c)[0]) for c in range(self.num_classes)])
     
-    def __len__(self):
-        return self.num_batchs
-    
-    def __getitem__(self, i):
-        anchors = []
-        positives = []
-        
-        for c in range(self.num_classes):
-            # examples in class y_i
-            idx_c = self.class_idx[c]
-        
-            # random choice anchor index and positive index for anchor
-            anchor_idx = random.choice(idx_c)
-            positive_idx = random.choice(idx_c)
-        
-            while positive_idx == anchor_idx:
-                positive_idx = random.choice(idx_c)
-            
-            # select anchor and positive image for anchor
-            anchor = self.data[anchor_idx]
-            positive = self.data[positive_idx]
-            
-            if self.transform != None:
-                anchor = self.transform(Image.fromarray(anchor))
-                positive = self.transform(Image.fromarray(positive))
-                
-            anchors.append(anchor)
-            positives.append(positive)
-            
-        anchors = torch.stack(anchors)
-        positives = torch.stack(positives)
-
-        return [anchors, positives]
-    
-    
-class MetricModel(nn.Module):
+class SupConModel(nn.Module):
     def __init__(self, image_encoder):
         super().__init__()
         self.image_encoder = image_encoder
