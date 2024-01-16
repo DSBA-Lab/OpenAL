@@ -181,6 +181,11 @@ def create_dataset(
     validset = set_classes(dataset=validset, dataname=dataname)
     testset = set_classes(dataset=testset, dataname=dataname)
     
+    # set dataname
+    trainset.dataname = dataname.lower()
+    validset.dataname = dataname.lower()
+    testset.dataname = dataname.lower()
+    
     return trainset, validset, testset
 
 
