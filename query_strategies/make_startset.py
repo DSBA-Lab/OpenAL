@@ -72,11 +72,13 @@ def create_is_labeled_unlabeled(trainset, id_targets: np.ndarray, size: int, ood
     # defined empty labeled index
     is_labeled = np.zeros(len(trainset), dtype=bool)
     is_unlabeled = np.zeros(len(trainset), dtype=bool)
+    is_ood = np.zeros(len(trainset), dtype=bool)
 
     is_labeled[lb_idx] = True
     is_unlabeled[ulb_idx] = True
+    is_ood[ood_start_idx] = True
 
-    return is_labeled, is_unlabeled
+    return is_labeled, is_unlabeled, is_ood
 
 
 def create_is_labeled(method: str, trainset: Dataset, size: int, seed: int, **kwargs):
