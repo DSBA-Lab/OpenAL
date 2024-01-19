@@ -97,15 +97,15 @@ class SimCLRCSI(MetricLearning):
                 bsz = images[0].size(0)
                 images1, images2 = images[0].to(device), images[1].to(device)
             
-            images1 = torch.cat([P.shift_trans(images1, k) for k in range(P.K_shift)])
-            images2 = torch.cat([P.shift_trans(images2, k) for k in range(P.K_shift)])
-            shift_labels = torch.cat([torch.ones_like(targets) * k for k in range(P.K_shift)], 0)  # B -> 4B
+            images1 = torch.cat([self.shift_trans(images1, k) for k in range(self.K_shift)])
+            images2 = torch.cat([self.shift_trans(images2, k) for k in range(self.K_shift)])
+            shift_labels = torch.cat([torch.ones_like(targets) * k for k in range(self.K_shift)], 0)  # B -> 4B
             shift_labels = shift_labels.repeat(2).to(device)
             
             images_pair = self.simclr_aug(images_pair)  # simclr augment
-            outputs = vis_encoder(images_pair, simclr=True, shift=True)
+            outputs = vis_encoder(images_pair, shift=True)
                        
-            f1, f2 = torch.split(outputs['simclr'], [bsz, bsz], dim=0)
+            f1, f2 = torch.split(outputs['features'], [bsz, bsz], dim=0)
             features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
             
             # loss
@@ -218,9 +218,9 @@ class SimCLR(MetricLearning):
                 images_pair = torch.cat([images1, images2], dim=0)  # 2B
             
             images_pair = self.simclr_aug(images_pair)  # simclr augment
-            outputs = vis_encoder(images_pair, simclr=True, shift=True)
+            outputs = vis_encoder(images_pair)
                        
-            f1, f2 = torch.split(outputs['simclr'], [bsz, bsz], dim=0)
+            f1, f2 = torch.split(outputs, [bsz, bsz], dim=0)
             features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
             
             # loss

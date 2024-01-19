@@ -4,14 +4,11 @@ import torch.nn as nn
 class SupConLoss(nn.Module):
     """Supervised Contrastive Learning: https://arxiv.org/pdf/2004.11362.pdf.
     It also supports the unsupervised contrastive loss in SimCLR"""
-    def __init__(self, temperature=0.07, contrast_mode='all',
-                 base_temperature=0.07):
+    def __init__(self, contrast_mode='all'):
         super(SupConLoss, self).__init__()
-        self.temperature = temperature
         self.contrast_mode = contrast_mode
-        self.base_temperature = base_temperature
 
-    def forward(self, features, labels=None, mask=None):
+    def forward(self, features, temperature=0.07, labels=None, mask=None):
         """Compute loss for model. If both `labels` and `mask` are None,
         it degenerates to SimCLR unsupervised loss:
         https://arxiv.org/pdf/2002.05709.pdf
@@ -59,9 +56,7 @@ class SupConLoss(nn.Module):
             raise ValueError('Unknown mode: {}'.format(self.contrast_mode))
 
         # compute logits
-        anchor_dot_contrast = torch.div(
-            torch.matmul(anchor_feature, contrast_feature.T),
-            self.temperature)
+        anchor_dot_contrast = torch.div(torch.matmul(anchor_feature, contrast_feature.T), temperature)
         # for numerical stability
         logits_max, _ = torch.max(anchor_dot_contrast, dim=1, keepdim=True)
         logits = anchor_dot_contrast - logits_max.detach()
@@ -93,7 +88,6 @@ class SupConLoss(nn.Module):
         mean_log_prob_pos = (mask * log_prob).sum(1) / mask_pos_pairs
 
         # loss
-        loss = - (self.temperature / self.base_temperature) * mean_log_prob_pos
-        loss = loss.view(anchor_count, batch_size).mean()
+        loss = (-mean_log_prob_pos).mean()
 
         return loss

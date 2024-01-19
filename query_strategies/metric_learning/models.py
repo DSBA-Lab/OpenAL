@@ -19,16 +19,20 @@ class MetricModel(nn.Module):
         self.shift_cls_layer = nn.Linear(self.num_features, 4)
 
     
-    def forward(self, x, simclr=False, shift=False):
-        outputs = {}
-        
+    def forward_features(self, x):
         features = self.head(self.backbone.forward_features(x))
-
-        if simclr:
-            outputs['simclr'] = F.normalize(self.simclr_layer(features), dim=1)
+        features = F.normalize(self.simclr_layer(features), dim=1)
+        
+        return features
+    
+    def forward(self, x, shift=False):        
+        
+        features = self.forward_features(x)
 
         if shift:
+            outputs = {'features': features}
             outputs['shift'] = self.shift_cls_layer(features)
-
-
+        else:
+            outputs = features
+        
         return outputs

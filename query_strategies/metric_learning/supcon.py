@@ -13,11 +13,12 @@ from .losses import SupConLoss
 
 
 class SupCon(MetricLearning):
-    def __init__(self, batch_size: int, num_workers: int, **init_params):
+    def __init__(self, train_transform, batch_size: int, num_workers: int, **init_params):
         super(SupCon, self).__init__(**init_params)
         
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.train_transform = train_transform
         self.train_criterion = SupConLoss()
         
     
@@ -45,8 +46,8 @@ class SupCon(MetricLearning):
     def train(self, vis_encoder, optimizer, device: str):
         total_loss = 0
         
-        desc = '[TRAIN] Loss: {loss:>6.4f}'
-        p_bar = tqdm(self.trainloader, desc=desc.format(loss=total_loss), leave=False)
+        desc = '[TRAIN] Loss: {loss:>6.4f}, Logit scaler: {scaler:>6.4f}'
+        p_bar = tqdm(self.trainloader, desc=desc.format(loss=total_loss, scaler=0.0), leave=False)
         
         vis_encoder.train()
         
@@ -55,12 +56,12 @@ class SupCon(MetricLearning):
             targets = targets.to(device)
             images = torch.cat([images[0], images[1]], dim=0).to(device)
 
-            features, _ = vis_encoder(images, return_logits_scaler=True)
+            features, logit_scale = vis_encoder(images, return_logits_scaler=True)
             
             f1, f2 = torch.split(features, [bsz, bsz], dim=0)
             features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
             
-            loss = self.train_criterion(features=features, labels=targets)
+            loss = self.train_criterion(features=features, temperature=1/logit_scale, labels=targets)
             
             total_loss += loss.item()
 
@@ -68,13 +69,15 @@ class SupCon(MetricLearning):
             loss.backward()
             optimizer.step()
             
-            p_bar.set_description(desc=desc.format(loss=total_loss/(idx+1)))
+            p_bar.set_description(desc=desc.format(loss=total_loss/(idx+1), scaler=logit_scale))
     
     
 class SupCon2(MetricLearning):
-    def __init__(self, **init_params):
+    def __init__(self, train_transform, **init_params):
         
         super(SupCon2, self).__init__(**init_params)   
+        
+        self.train_transform = train_transform
     
     def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
         # set trainset        
@@ -94,8 +97,8 @@ class SupCon2(MetricLearning):
     def train(self, vis_encoder, optimizer, device: str):
         total_loss = 0
         
-        desc = '[TRAIN] Loss: {loss:>6.4f}'
-        p_bar = tqdm(self.trainset, desc=desc.format(loss=total_loss), leave=False)
+        desc = '[TRAIN] Loss: {loss:>6.4f}, Logit scaler: {scaler:>6.4f}'
+        p_bar = tqdm(self.trainset, desc=desc.format(loss=total_loss, scaler=0.0), leave=False)
         
         vis_encoder.train()
         
@@ -122,7 +125,7 @@ class SupCon2(MetricLearning):
             loss.backward()
             optimizer.step()
             
-            p_bar.set_description(desc=desc.format(loss=total_loss/(idx+1)))
+            p_bar.set_description(desc=desc.format(loss=total_loss/(idx+1), scaler=logit_scale))
     
     
 class SupConDataset(Dataset):
