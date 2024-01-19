@@ -13,20 +13,16 @@ class VarRatioSampling(Strategy):
     def __init__(self, **init_args):
         
         super(VarRatioSampling, self).__init__(**init_args)
-        
-    def query(self, model) -> np.ndarray:
-        # unlabeled index
-        unlabeled_idx = self.get_unlabeled_idx()
-   
+
+    
+    def get_scores(self, model, sample_idx: np.ndarray):
         # predict probability on unlabeled dataset
         probs = self.extract_outputs(
             model      = model, 
-            sample_idx = unlabeled_idx, 
+            sample_idx = sample_idx, 
         )['probs']
         
         preds = probs.max(dim=1)[0]
         uncertainties = (1.0 - preds).sort(descending = True)[1]
-
-        select_idx = unlabeled_idx[uncertainties[:self.n_query]]
-
-        return select_idx
+        
+        return uncertainties

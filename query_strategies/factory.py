@@ -2,9 +2,22 @@ import numpy as np
 from torch.utils.data import Dataset
 
 def create_query_strategy(
-    model, strategy_name: str, dataset: Dataset, is_labeled: np.ndarray, sampler_name: str, test_transform,
-    n_query: int, batch_size: int, num_workers: int, n_subset: int = 0, params: dict = dict(), 
-    tta_agg: str = None, tta_params: dict = None, interval_type: str = 'top', resampler_params: dict = None):
+        model, 
+        strategy_name: str, 
+        dataset: Dataset, 
+        is_labeled: np.ndarray, 
+        sampler_name: str, 
+        test_transform,
+        n_query: int, 
+        batch_size: int, 
+        num_workers: int, 
+        n_subset: int = 0, 
+        params: dict = dict(), 
+        tta_agg: str = None, 
+        tta_params: dict = None, 
+        interval_type: str = 'top', 
+        resampler_params: dict = None
+    ):
     
     strategy = __import__('query_strategies').__dict__[strategy_name](
         model            = model,

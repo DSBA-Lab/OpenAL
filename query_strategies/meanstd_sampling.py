@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torch.utils.data import Dataset
 from .strategy import Strategy
 
 class MeanSTDSampling(Strategy):
@@ -12,14 +11,12 @@ class MeanSTDSampling(Strategy):
         super(MeanSTDSampling, self).__init__(**init_args)
         self.num_mcdropout = num_mcdropout
           
-    def query(self, model, **kwargs) -> np.ndarray:
-        # unlabeled index
-        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
-        
+    
+    def get_scores(self, model, sample_idx: np.ndarray):
         # outputs: (num_mcdropout x samples x num_classes)
         outputs = self.extract_outputs(
             model         = model, 
-            sample_idx    = unlabeled_idx, 
+            sample_idx    = sample_idx, 
             num_mcdropout = self.num_mcdropout
         )
         
@@ -28,8 +25,5 @@ class MeanSTDSampling(Strategy):
         
         # uncertainties: (samples, )
         uncertainties = torch.mean(sigma_c, dim=1)
-
-        # select samples' index from largest uncertainty
-        select_idx = unlabeled_idx[uncertainties.sort(descending=True)[1][:self.n_query]]
-
-        return select_idx    
+        
+        return uncertainties.sort(descending=True)[1]

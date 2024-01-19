@@ -24,20 +24,13 @@ class BALD(Strategy):
         H = (-pc * torch.log(pc + 1e-10)).sum(dim=1)  # To avoid division with zero, add 1e-10
         E = -torch.mean(torch.sum(outputs * torch.log(outputs + 1e-10), dim=2), dim=0)
         return H, E
-        
-    def query(self, model, **kwargs) -> np.ndarray:
-        # unlabeled index
-        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
-        
+
+    
+    def get_scores(self, model, sample_idx: np.ndarray):
         # predict probability on unlabeled dataset
-        H, E_H = self.shannon_entropy_function(model=model, unlabeled_idx=unlabeled_idx)
+        H, E_H = self.shannon_entropy_function(model=model, unlabeled_idx=sample_idx)
         
         # calculate mutual information 
         mutual_information = H - E_H 
-        
-        # select maximum mutual_information
-        select_idx = unlabeled_idx[mutual_information.sort(descending=True)[1][:self.n_query]]
-        
-        return select_idx
     
-    
+        return mutual_information.sort(descending=True)[1]

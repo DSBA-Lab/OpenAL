@@ -139,22 +139,14 @@ class LearningLossAL(Strategy):
         self.loss_weight = loss_weight
     
     
-    def query(self, model, **kwargs) -> np.ndarray:
-        # unlabeled index
-        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
-        
+    def get_scores(self, model, sample_idx: np.ndarray):
         # predict loss-prediction on unlabeled dataset
         loss_pred = self.extract_outputs(
             model      = model, 
-            sample_idx = unlabeled_idx, 
+            sample_idx = sample_idx, 
         )
         
-        # select loss
-        q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
-        select_idx = unlabeled_idx[loss_pred.sort(descending=True)[1][q_idx]]
-        
-        return select_idx
-    
+        return loss_pred.sort(descending=True)[1]
 
     def init_model(self):
         model = deepcopy(self.model)
