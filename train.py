@@ -15,10 +15,8 @@ from accelerate import Accelerator
 from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, \
                             balanced_accuracy_score, classification_report, confusion_matrix
 
-from open_clipn import load_model
 from query_strategies import create_query_strategy, create_is_labeled, create_id_ood_targets, create_is_labeled_unlabeled, create_id_testloader, torch_seed
 from query_strategies.prompt_ensemble import PromptEnsemble
-from query_strategies.clipn_al import CLIPNAL
 from models import create_model
 from query_strategies.utils import NoIndent, MyEncoder
 from omegaconf import OmegaConf
@@ -781,7 +779,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
     assert sum(id_targets == id_targets_check) == cfg.AL.nb_id_class, "ID targets are not matched"
     
     # inital sampling labeling
-    is_labeled, is_unlabeled = create_is_labeled_unlabeled(
+    is_labeled, is_unlabeled, is_ood = create_is_labeled_unlabeled(
         trainset   = trainset,
         id_targets = id_targets,
         size       = cfg.AL.n_start,
@@ -796,35 +794,19 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         pretrained  = cfg.MODEL.pretrained, 
         **cfg.MODEL.get('params',{})
     )
-    
-    # load visual classifier
-    vis_clf, process_train, process_test = load_model(
-        model_type  = cfg.CLIPN.model_type, 
-        pre_train   = cfg.CLIPN.ckp_path, 
-        prompt_path = cfg.CLIPN.prompt_path, 
-        classes     = trainset.classes[id_targets]
-    )
-    
-    # CLIPN AL
-    if 'metric_params' in cfg.CLIPN:
-        cfg.CLIPN.metric_params.seed = cfg.DEFAULT.seed
-        
-    openset_strategy = CLIPNAL(
-        vis_clf         = vis_clf,
-        train_transform = process_train,
-        test_transform  = process_test,
-        num_id_classes  = len(id_targets),
-        dataset         = trainset,
-        batch_size      = cfg.CLIPN.batch_size,
-        num_workers     = cfg.DATASET.num_workers,
-        is_labeled      = is_labeled,
-        is_unlabeled    = is_unlabeled,
-        savedir         = savedir,
-        use_sim         = cfg.CLIPN.use_sim,
-        metric_params   = cfg.CLIPN.get('metric_params', {})
-    )
-    
+
     # select strategy    
+    openset_params = {
+        'is_openset'   : True,
+        'is_unlabeled' : is_unlabeled,
+        'is_ood'       : is_ood,
+        'id_classes'   : trainset.classes[id_targets],
+        'savedir'      : savedir,
+        'seed'         : cfg.DEFAULT.seed
+    }
+    openset_params.update(cfg.AL.get('openset_params', {}))
+    openset_params.update(cfg.AL.get('params', {}))
+    
     strategy = create_query_strategy(
         strategy_name   = cfg.AL.strategy, 
         model           = model,
@@ -836,7 +818,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         n_subset        = cfg.AL.n_subset,
         batch_size      = cfg.DATASET.batch_size, 
         num_workers     = cfg.DATASET.num_workers,
-        params          = cfg.AL.get('params', {})
+        params          = openset_params
     )
     
     # define train dataloader
@@ -867,21 +849,11 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
     for r in range(nb_round+1):
         
         if r != 0:    
-            
-            # filtering ID samples from unlabeled samples
-            if cfg.CLIPN.use:
-                id_unlabeled_idx = openset_strategy.predict_id_idx(vis_clf=vis_clf)
-                openset_strategy.check_ood_acc(pred_id_ulb_idx=id_unlabeled_idx, savedir=savedir)
-            else:
-                id_unlabeled_idx = np.where(openset_strategy.is_unlabeled==True)[0]
-                
             # query sampling    
-            query_params = {'unlabeled_idx': id_unlabeled_idx}
-            query_idx = strategy.query(model, **query_params)
+            query_idx = strategy.query(model)
             
             # update query
-            id_query_idx = openset_strategy.update(query_idx)
-            strategy.update(id_query_idx)
+            id_query_idx = strategy.update(query_idx=query_idx)
             
             # query_idx resampling
             if strategy.use_resampler:
@@ -903,18 +875,13 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             del optimizer, scheduler, validloader, testloader
             if not cfg.AL.continual:
                 del model
-            if cfg.CLIPN.use:
-                del vis_clf
                 
             accelerator.free_memory()
             
         # logging
         _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(is_labeled)))
         
-        # build Model
-        if cfg.CLIPN.use:
-            vis_clf = openset_strategy.init_model()
-            
+        # build Model          
         if not cfg.AL.get('continual', False) or r == 0:
             model = strategy.init_model()
         
@@ -943,9 +910,6 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             model, optimizer, trainloader, validloader, testloader, scheduler
         )
         
-        if cfg.CLIPN.use:
-            vis_clf = accelerator.prepare(vis_clf)
-        
         # initialize wandb
         if cfg.TRAIN.wandb.use:
             wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
@@ -967,15 +931,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         )
         
         # save model
-        if cfg.MODEL.name == 'VPTAL':
-            torch.save(model.prompt.state_dict(), os.path.join(savedir, f"prompt_seed{cfg.DEFAULT.seed}-round{r}.pt"))
-        else:
-            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
-
-        # aggretate previous weights
-        if cfg.AL.strategy == 'PromptEnsemble' and cfg.TRAIN.get('ensemble', False):
-            prompt_weights = PromptEnsemble.weights_average(r=r+1, seed=cfg.DEFAULT.seed, savedir=savedir, weights=strategy.weights)
-            model.prompt.load_state_dict(prompt_weights)
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
 
         # ====================
         # validation results
@@ -1048,7 +1004,6 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             os.path.join(savedir, f"round{nb_round}-seed{cfg.DEFAULT.seed}_test.csv"),
             index=False
         )   
-        
         
         _logger.info('append result [shape: {}]'.format(log_df_test.shape))
         

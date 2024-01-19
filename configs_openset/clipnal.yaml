@@ -1,20 +1,18 @@
 AL:
+  strategy: CLIPNAL
   ood_ratio: 0.1
   nb_id_class: 4
-
-CLIPN:
-  use: true
-  use_sim: false
-  model_type: ViT-B-16
-  ckp_path: ./checkpoints/clipn_atd-repeat3.pt
-  prompt_path: ./prompt_template/prompt128.txt
-  batch_size: 32
-  metric_params:
-    use: false
-    epochs: 20
-    test_ratio: 0.3
-    opt_name: AdamW
-    lr: 0.00001
-    opt_params:
-      weight_decay: 0.00005
-
+  openset_params:
+    selected_strategy: LeastConfidence
+    use_sim: false
+    model_type: ViT-B-16
+    ckp_path: ./checkpoints/clipn_atd-repeat3.pt
+    prompt_path: ./prompt_template/prompt128.txt
+    metric_params:
+      method_name: SupCon2
+      use: false
+      epochs: 2
+      opt_name: AdamW
+      lr: 0.00001
+      opt_params:
+        weight_decay: 0.00005

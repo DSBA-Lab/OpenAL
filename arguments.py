@@ -18,18 +18,20 @@ def parser():
         cfg = OmegaConf.merge(cfg, cfg_strategy)
         del args['strategy_cfg']
     
-    # load openset config
-    if 'openset_cfg' in args.keys():
-        cfg_openset = OmegaConf.load(args.openset_cfg)
-        cfg = OmegaConf.merge(cfg, cfg_openset)
-        del args['openset_cfg']
-    
-    # load resampler config
-    if 'resampler_cfg' in args.keys():
-        cfg_resampler = OmegaConf.load(args.resampler_cfg)
-        cfg = OmegaConf.merge(cfg, cfg_resampler)
-        del args['resampler_cfg']
-    
+        # load openset config
+        if 'openset_cfg' in args.keys():           
+            cfg_openset = OmegaConf.load(args.openset_cfg)
+            cfg_openset = update_openset_strategy_cfg(cfg, cfg_openset)
+            cfg = OmegaConf.merge(cfg, cfg_openset)
+            
+            del args['openset_cfg']
+        
+        # load resampler config
+        if 'resampler_cfg' in args.keys():
+            cfg_resampler = OmegaConf.load(args.resampler_cfg)
+            cfg = OmegaConf.merge(cfg, cfg_resampler)
+            del args['resampler_cfg']
+        
     # merge config with new keys
     cfg = OmegaConf.merge(cfg, args)
     
@@ -81,6 +83,14 @@ def update_stategy_cfg(cfg):
         cfg = _update_pt4al_cfg(cfg)
     
     return cfg
+
+
+def update_openset_strategy_cfg(cfg, cfg_openset):
+    if cfg_openset.AL.strategy in ['CLIPNAL']:
+        cfg_openset.AL.openset_params.selected_strategy = cfg.AL.strategy
+        
+    return cfg_openset
+        
 
 def _update_pt4al_cfg(cfg):
     # for AL params
