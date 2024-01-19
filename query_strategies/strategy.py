@@ -16,9 +16,26 @@ from .tta import TTA
 
 class Strategy:
     def __init__(
-        self, model, n_query: int, dataset: Dataset, test_transform, is_labeled: np.ndarray, 
-        batch_size: int, num_workers: int, sampler_name: str, n_subset: int = 0, 
-        tta_agg: str = None, tta_params: dict = None, interval_type: str = 'top', resampler_params: dict = None):
+            self, 
+            model, 
+            n_query: int, 
+            dataset: Dataset, 
+            test_transform, 
+            is_labeled: np.ndarray, 
+            batch_size: int, 
+            num_workers: int, 
+            sampler_name: str, 
+            n_subset: int = 0, 
+            is_openset: bool = False,
+            is_unlabeled: np.ndarray = None, 
+            is_ood: np.ndarray = None,
+            id_classes: np.ndarray = None,
+            tta_agg: str = None, 
+            tta_params: dict = None, 
+            interval_type: str = 'top', 
+            resampler_params: dict = None,
+            **kwargs
+        ):
         
         # model
         self.model = model
@@ -36,6 +53,14 @@ class Strategy:
         # for labeled index
         self.is_labeled = is_labeled 
         
+        # for open-set params
+        self.is_openset = is_openset
+        if self.is_openset:
+            self.is_unlabeled = is_unlabeled
+            self.is_ood = is_ood
+            self.id_classes = id_classes
+            self.num_id_classes = len(id_classes)
+                        
         # for datasets
         self.dataset = dataset
         self.test_transform = test_transform
@@ -69,11 +94,44 @@ class Strategy:
             outputs = outputs['logits']
         return self.criterion(outputs, targets)
         
-    def query(self):
-        raise NotImplementedError
+    def query(self, model, **kwargs) -> np.ndarray:
+        # unlabeled index
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
+        
+        # get entropy
+        scores = self.get_scores(model=model, sample_idx=unlabeled_idx)
+        
+        q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
+        select_idx = unlabeled_idx[scores[q_idx]]
+        
+        return select_idx
     
     def update(self, query_idx: np.ndarray):
-        self.is_labeled[query_idx] = True
+        if self.is_openset:
+            # turn off query index
+            self.is_unlabeled[query_idx] = False 
+            
+            # filtering ID index
+            id_query_idx, ood_query_idx = self.get_id_query_idx(query_idx=query_idx)
+            self.is_labeled[id_query_idx] = True
+            self.is_ood[ood_query_idx] = True
+            
+            return id_query_idx    
+        else:
+            self.is_labeled[query_idx] = True        
+        
+    def get_id_query_idx(self, query_idx: np.ndarray):
+        targets = get_target_from_dataset(self.dataset)
+               
+        query_targets = targets[query_idx]
+        id_idx = np.where(query_targets < self.num_id_classes)[0]
+        ood_idx = np.where(query_targets == self.num_id_classes)[0]
+        
+        id_query_idx = query_idx[id_idx]
+        ood_query_idx = query_idx[ood_idx]
+        
+        return id_query_idx, ood_query_idx
+    
         
     def get_trainloader(self) -> DataLoader:
         dataloader = DataLoader(
