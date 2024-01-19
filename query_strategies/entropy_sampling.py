@@ -19,5 +19,5 @@ class EntropySampling(Strategy):
         # select maximum entropy
         entropy = (-(probs*torch.log(probs))).sum(dim=1)
         
-        return entropy.sort(descending=True)[1]
+        return entropy, entropy.sort(descending=True)[1]
         

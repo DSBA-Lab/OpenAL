@@ -98,11 +98,11 @@ class Strategy:
         # unlabeled index
         unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
-        # get entropy
-        scores = self.get_scores(model=model, sample_idx=unlabeled_idx)
+        # get score rank
+        _, score_rank = self.get_scores(model=model, sample_idx=unlabeled_idx)
         
         q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
-        select_idx = unlabeled_idx[scores[q_idx]]
+        select_idx = unlabeled_idx[score_rank[q_idx]]
         
         return select_idx
     

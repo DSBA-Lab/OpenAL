@@ -15,6 +15,6 @@ class LeastConfidence(Strategy):
             sample_idx = sample_idx, 
         )['probs']
         
-        max_confidence = probs.max(dim=1)[0]
+        max_confidence = 1 - probs.max(dim=1)[0]
         
-        return max_confidence.sort()[1]
+        return max_confidence, max_confidence.sort(descending=True)[1]

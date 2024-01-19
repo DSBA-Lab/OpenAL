@@ -16,6 +16,6 @@ class MarginSampling(Strategy):
         )['probs']
         
         sorted_desc_prob, _ = probs.sort(descending=True)
-        prob_margin = sorted_desc_prob[:,0] - sorted_desc_prob[:,1]
+        prob_margin = 1 - (sorted_desc_prob[:,0] - sorted_desc_prob[:,1])
         
-        return prob_margin.sort()[1]
+        return prob_margin, prob_margin.sort(desending=True)[1]

@@ -33,4 +33,4 @@ class BALD(Strategy):
         # calculate mutual information 
         mutual_information = H - E_H 
     
-        return mutual_information.sort(descending=True)[1]
+        return mutual_information, mutual_information.sort(descending=True)[1]

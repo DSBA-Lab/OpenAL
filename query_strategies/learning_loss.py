@@ -146,7 +146,7 @@ class LearningLossAL(Strategy):
             sample_idx = sample_idx, 
         )
         
-        return loss_pred.sort(descending=True)[1]
+        return loss_pred, loss_pred.sort(descending=True)[1]
 
     def init_model(self):
         model = deepcopy(self.model)

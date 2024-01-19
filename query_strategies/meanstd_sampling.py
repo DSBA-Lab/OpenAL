@@ -26,4 +26,4 @@ class MeanSTDSampling(Strategy):
         # uncertainties: (samples, )
         uncertainties = torch.mean(sigma_c, dim=1)
         
-        return uncertainties.sort(descending=True)[1]
+        return uncertainties, uncertainties.sort(descending=True)[1]
