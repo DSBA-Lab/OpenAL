@@ -272,7 +272,9 @@ class Strategy:
                         embed = inputs
                         forward_func = 'forward'
                     else:
-                        embed = model.forward_features(inputs.to(device))
+                        backbone = getattr(model, 'backbone', model)
+                        
+                        embed = backbone.forward_features(inputs.to(device))
                         results['embed'].append(embed.cpu())
                         forward_func = 'forward_head'
                 else:
