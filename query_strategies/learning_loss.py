@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from tqdm.auto import tqdm
-from torch.utils.data import Dataset
 from copy import deepcopy
 from functools import partial
 from collections import OrderedDict
@@ -20,6 +19,7 @@ class LearningLoss(nn.Module):
         batch size should be even
         but we can't always be satisfied, so we cut our losses and exclude the last sample if it's an odd number.
         '''
+        targets = targets.detach()
         if len(outputs) % 2 != 0:
             outputs = outputs[:-1]
             targets = targets[:-1]
@@ -162,8 +162,7 @@ class LearningLossAL(Strategy):
         return target_loss.mean() + (self.loss_weight * loss_pred_loss.mean())
     
     
-    def get_outputs(
-        self, model, dataloader, device: str, **kwargs) -> dict:
+    def get_outputs(self, model, dataloader, device: str, **kwargs):
     
         # predict
         loss_pred = []
