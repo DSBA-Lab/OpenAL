@@ -19,7 +19,7 @@ from query_strategies import create_query_strategy, create_is_labeled, \
                              create_id_ood_targets, create_is_labeled_unlabeled, \
                              create_id_testloader, torch_seed, \
                              create_scheduler, create_optimizer
-
+from query_strategies.utils import TrainIterableDataset
 from query_strategies.prompt_ensemble import PromptEnsemble
 from models import create_model
 from query_strategies.utils import NoIndent, MyEncoder
@@ -162,76 +162,74 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     model.train()
     optimizer.zero_grad()
     
-    steps_per_epoch = train_params.get('steps_per_epoch', len(dataloader))
+    steps_per_epoch = train_params.get('steps_per_epoch') if train_params.get('steps_per_epoch') else len(dataloader)
     
     step = 0
-    
-    while step < steps_per_epoch:
-        for idx, (inputs, targets) in enumerate(dataloader):
-            with accelerator.accumulate(model):
-                data_time_m.update(time.time() - end)
-                
-                # predict
-                if query_model != None:
-                    with torch.no_grad():
-                        cls_features = query_model.forward_features(inputs)[:,0]
-                    outputs = model(inputs, cls_features=cls_features)
-                else:
-                    outputs = model(inputs)
-                
-                # detach LPM for learning loss
-                if train_params.get('is_detach_lpm', False):
-                    for k, v in model.layer_outputs.items():
-                        model.layer_outputs[k] = v.detach()
-
-                # calc loss
-                if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
-                    outputs = outputs['logits']
-                    
-                loss = criterion(outputs, targets)    
-                accelerator.backward(loss)
-
-                # loss update
-                optimizer.step()
-                optimizer.zero_grad()
-                losses_m.update(loss.item())
-
-                # accuracy 
-                if isinstance(outputs, dict):
-                    outputs = outputs['logits']           
-                acc_m.update(accuracy(outputs, targets), n=targets.size(0))
-                
-                # stack output
-                total_preds.extend(outputs.argmax(dim=1).detach().cpu().tolist())
-                total_score.extend(outputs.detach().cpu().tolist())
-                total_targets.extend(targets.detach().cpu().tolist())
-                
-                # batch time
-                batch_time_m.update(time.time() - end)
+    for idx, (inputs, targets) in enumerate(dataloader):
+        with accelerator.accumulate(model):
+            data_time_m.update(time.time() - end)
             
-                if (step+1) % accelerator.gradient_accumulation_steps == 0:
-                    if ((step+1) // accelerator.gradient_accumulation_steps) % log_interval == 0: 
-                        _logger.info('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
-                                    'Acc: {acc.avg:.3%} '
-                                    'LR: {lr:.3e} '
-                                    'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s ({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s) '
-                                    'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
-                                    (step+1)//accelerator.gradient_accumulation_steps, 
-                                    steps_per_epoch//accelerator.gradient_accumulation_steps, 
-                                    loss       = losses_m, 
-                                    acc        = acc_m, 
-                                    lr         = optimizer.param_groups[0]['lr'],
-                                    batch_time = batch_time_m,
-                                    rate       = inputs.size(0) / batch_time_m.val,
-                                    rate_avg   = inputs.size(0) / batch_time_m.avg,
-                                    data_time  = data_time_m))
+            # predict
+            if query_model != None:
+                with torch.no_grad():
+                    cls_features = query_model.forward_features(inputs)[:,0]
+                outputs = model(inputs, cls_features=cls_features)
+            else:
+                outputs = model(inputs)
+            
+            # detach LPM for learning loss
+            if train_params.get('is_detach_lpm', False):
+                for k, v in model.layer_outputs.items():
+                    model.layer_outputs[k] = v.detach()
+
+            # calc loss
+            if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
+                outputs = outputs['logits']
+                
+            loss = criterion(outputs, targets)    
+            accelerator.backward(loss)
+
+            # loss update
+            optimizer.step()
+            optimizer.zero_grad()
+            losses_m.update(loss.item())
+
+            # accuracy 
+            if isinstance(outputs, dict):
+                outputs = outputs['logits']           
+            acc_m.update(accuracy(outputs, targets), n=targets.size(0))
+            
+            # stack output
+            total_preds.extend(outputs.argmax(dim=1).detach().cpu().tolist())
+            total_score.extend(outputs.detach().cpu().tolist())
+            total_targets.extend(targets.detach().cpu().tolist())
+            
+            # batch time
+            batch_time_m.update(time.time() - end)
         
-                end = time.time()
-                
-                step += 1
-                
-                if step == steps_per_epoch:
-                    break
+            if (step+1) % accelerator.gradient_accumulation_steps == 0:
+                if ((step+1) // accelerator.gradient_accumulation_steps) % log_interval == 0: 
+                    _logger.info('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
+                                'Acc: {acc.avg:.3%} '
+                                'LR: {lr:.3e} '
+                                'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s ({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s) '
+                                'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
+                                (step+1)//accelerator.gradient_accumulation_steps, 
+                                steps_per_epoch//accelerator.gradient_accumulation_steps, 
+                                loss       = losses_m, 
+                                acc        = acc_m, 
+                                lr         = optimizer.param_groups[0]['lr'],
+                                batch_time = batch_time_m,
+                                rate       = inputs.size(0) / batch_time_m.val,
+                                rate_avg   = inputs.size(0) / batch_time_m.avg,
+                                data_time  = data_time_m))
+    
+            end = time.time()
+            
+            step += 1
+            
+            if step == steps_per_epoch:
+                break
 
     # calculate metrics
     metrics = {}
@@ -373,6 +371,23 @@ def full_run(
     _logger.info('Full Supervised Learning, [total samples] {}'.format(len(trainset)))
 
     # define train dataloader
+    trainloader = DataLoader(
+        dataset     = trainset,
+        batch_size  = cfg.DATASET.batch_size,
+        shuffle     = True,
+        num_workers = cfg.DATASET.num_workers,
+        pin_memory  = True
+    )
+    
+    if cfg.TRAIN.get('params'):
+        if cfg.TRAIN.params.get('steps_per_epoch'):
+            dataloader = DataLoader(
+                dataset     = TrainIterableDataset(dataset=trainset),
+                batch_size  = cfg.DATASET.batch_size,
+                num_workers = cfg.DATASET.num_workers,
+                pin_memory  = True
+            )   
+    
     trainloader = DataLoader(
         dataset     = trainset,
         batch_size  = cfg.DATASET.batch_size,
@@ -535,6 +550,11 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
     )
     
     # select strategy    
+    trainloader_type = 'epoch'
+    if cfg.TRAIN.get('params'):
+        if cfg.TRAIN.params.get('steps_per_epoch'):
+            trainloader_type = 'step'
+            
     strategy = create_query_strategy(
         strategy_name    = cfg.AL.strategy, 
         model            = model,
@@ -546,6 +566,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         n_subset         = cfg.AL.n_subset,
         batch_size       = cfg.DATASET.batch_size, 
         num_workers      = cfg.DATASET.num_workers,
+        trainloader_type = trainloader_type,
         tta_agg          = cfg.AL.get('tta_agg', None),
         tta_params       = cfg.AL.get('tta_params', None),
         interval_type    = cfg.AL.get('interval_type', 'top'),
@@ -834,17 +855,23 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
     openset_params.update(cfg.AL.get('openset_params', {}))
     openset_params.update(cfg.AL.get('params', {}))
     
+    trainloader_type = 'epoch'
+    if cfg.TRAIN.get('params'):
+        if cfg.TRAIN.params.get('steps_per_epoch'):
+            trainloader_type = 'step'
+    
     strategy = create_query_strategy(
-        strategy_name   = cfg.AL.strategy, 
-        model           = model,
-        dataset         = trainset, 
-        test_transform  = testset.transform,
-        sampler_name    = cfg.DATASET.sampler_name,
-        is_labeled      = is_labeled, 
-        n_query         = cfg.AL.n_query, 
-        n_subset        = cfg.AL.n_subset,
-        batch_size      = cfg.DATASET.batch_size, 
-        num_workers     = cfg.DATASET.num_workers,
+        strategy_name    = cfg.AL.strategy, 
+        model            = model,
+        dataset          = trainset, 
+        test_transform   = testset.transform,
+        sampler_name     = cfg.DATASET.sampler_name,
+        is_labeled       = is_labeled, 
+        n_query          = cfg.AL.n_query, 
+        n_subset         = cfg.AL.n_subset,
+        batch_size       = cfg.DATASET.batch_size, 
+        num_workers      = cfg.DATASET.num_workers,
+        trainloader_type = trainloader_type,
         **openset_params
     )
     

@@ -11,7 +11,7 @@ from timm.models import FeatureDictNet
 from sklearn.metrics import silhouette_score
 
 from .sampler import SubsetSequentialSampler, SubsetWeightedRandomSampler
-from .utils import get_target_from_dataset
+from .utils import get_target_from_dataset, TrainIterableDataset
 from .tta import TTA
 
 class Strategy:
@@ -25,6 +25,7 @@ class Strategy:
             batch_size: int, 
             num_workers: int, 
             sampler_name: str, 
+            trainloader_type: str = 'epoch',
             n_subset: int = 0, 
             is_openset: bool = False,
             is_unlabeled: np.ndarray = None, 
@@ -67,6 +68,7 @@ class Strategy:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.sampler_name = sampler_name
+        self.trainloader_type = trainloader_type
         
         # test time augmentation
         self.tta = None
@@ -134,12 +136,22 @@ class Strategy:
     
         
     def get_trainloader(self) -> DataLoader:
-        dataloader = DataLoader(
-            dataset     = self.dataset,
-            batch_size  = self.batch_size,
-            sampler     = self.select_sampler(indices=np.where(self.is_labeled==True)[0]),
-            num_workers = self.num_workers
-        )
+        
+        if self.trainloader_type == 'step':
+            dataloader = DataLoader(
+                dataset     = TrainIterableDataset(dataset=self.dataset, sample_idx=np.where(self.is_labeled==True)[0]),
+                batch_size  = self.batch_size,
+                num_workers = self.num_workers,
+                pin_memory  = True
+            )
+        elif self.trainloader_type == 'epoch':             
+            dataloader = DataLoader(
+                dataset     = self.dataset,
+                batch_size  = self.batch_size,
+                sampler     = self.select_sampler(indices=np.where(self.is_labeled==True)[0]),
+                num_workers = self.num_workers,
+                pin_memory  = True
+            )
         
         return dataloader
     
