@@ -30,7 +30,7 @@ AL:
       lr: 0.1
       opt_params:
         momentum: 0.9
-        weight_decay: 0.0005
+        weight_decay: 1ㄷ-6
         LARS:
           eps: 1e-8
           trust_coef: 0.001
