@@ -15,7 +15,11 @@ from accelerate import Accelerator
 from sklearn.metrics import roc_auc_score, f1_score, recall_score, precision_score, \
                             balanced_accuracy_score, classification_report, confusion_matrix
 
-from query_strategies import create_query_strategy, create_is_labeled, create_id_ood_targets, create_is_labeled_unlabeled, create_id_testloader, torch_seed
+from query_strategies import create_query_strategy, create_is_labeled, \
+                             create_id_ood_targets, create_is_labeled_unlabeled, \
+                             create_id_testloader, torch_seed, \
+                             create_scheduler, create_optimizer
+
 from query_strategies.prompt_ensemble import PromptEnsemble
 from models import create_model
 from query_strategies.utils import NoIndent, MyEncoder
@@ -76,15 +80,6 @@ def accuracy(outputs, targets, return_correct=False):
         return correct
     else:
         return correct/targets.size(0)
-
-
-def create_scheduler(sched_name, optimizer, epochs: int, params: dict):
-    if sched_name == 'cosine_annealing':
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=params['t_mult'], eta_min=params['eta_min'])
-    elif sched_name == 'multi_step':
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=params['milestones'])
-        
-    return scheduler
 
 
 def create_criterion(name, params):
@@ -167,67 +162,77 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     model.train()
     optimizer.zero_grad()
     
-    for idx, (inputs, targets) in enumerate(dataloader):
-        with accelerator.accumulate(model):
-            data_time_m.update(time.time() - end)
-            
-            # predict
-            if query_model != None:
-                with torch.no_grad():
-                    cls_features = query_model.forward_features(inputs)[:,0]
-                outputs = model(inputs, cls_features=cls_features)
-            else:
-                outputs = model(inputs)
-            
-            # detach LPM for learning loss
-            if train_params.get('is_detach_lpm', False):
-                for k, v in model.layer_outputs.items():
-                    model.layer_outputs[k] = v.detach()
-
-            # calc loss
-            if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
-                outputs = outputs['logits']
+    steps_per_epoch = train_params.get('steps_per_epoch', len(dataloader))
+    
+    step = 0
+    
+    while step < steps_per_epoch:
+        for idx, (inputs, targets) in enumerate(dataloader):
+            with accelerator.accumulate(model):
+                data_time_m.update(time.time() - end)
                 
-            loss = criterion(outputs, targets)    
-            accelerator.backward(loss)
+                # predict
+                if query_model != None:
+                    with torch.no_grad():
+                        cls_features = query_model.forward_features(inputs)[:,0]
+                    outputs = model(inputs, cls_features=cls_features)
+                else:
+                    outputs = model(inputs)
+                
+                # detach LPM for learning loss
+                if train_params.get('is_detach_lpm', False):
+                    for k, v in model.layer_outputs.items():
+                        model.layer_outputs[k] = v.detach()
 
-            # loss update
-            optimizer.step()
-            optimizer.zero_grad()
-            losses_m.update(loss.item())
+                # calc loss
+                if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
+                    outputs = outputs['logits']
+                    
+                loss = criterion(outputs, targets)    
+                accelerator.backward(loss)
 
-            # accuracy 
-            if isinstance(outputs, dict):
-                outputs = outputs['logits']           
-            acc_m.update(accuracy(outputs, targets), n=targets.size(0))
+                # loss update
+                optimizer.step()
+                optimizer.zero_grad()
+                losses_m.update(loss.item())
+
+                # accuracy 
+                if isinstance(outputs, dict):
+                    outputs = outputs['logits']           
+                acc_m.update(accuracy(outputs, targets), n=targets.size(0))
+                
+                # stack output
+                total_preds.extend(outputs.argmax(dim=1).detach().cpu().tolist())
+                total_score.extend(outputs.detach().cpu().tolist())
+                total_targets.extend(targets.detach().cpu().tolist())
+                
+                # batch time
+                batch_time_m.update(time.time() - end)
             
-            # stack output
-            total_preds.extend(outputs.argmax(dim=1).detach().cpu().tolist())
-            total_score.extend(outputs.detach().cpu().tolist())
-            total_targets.extend(targets.detach().cpu().tolist())
-            
-            # batch time
-            batch_time_m.update(time.time() - end)
+                if (step+1) % accelerator.gradient_accumulation_steps == 0:
+                    if ((step+1) // accelerator.gradient_accumulation_steps) % log_interval == 0: 
+                        _logger.info('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
+                                    'Acc: {acc.avg:.3%} '
+                                    'LR: {lr:.3e} '
+                                    'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s ({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s) '
+                                    'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
+                                    (step+1)//accelerator.gradient_accumulation_steps, 
+                                    steps_per_epoch//accelerator.gradient_accumulation_steps, 
+                                    loss       = losses_m, 
+                                    acc        = acc_m, 
+                                    lr         = optimizer.param_groups[0]['lr'],
+                                    batch_time = batch_time_m,
+                                    rate       = inputs.size(0) / batch_time_m.val,
+                                    rate_avg   = inputs.size(0) / batch_time_m.avg,
+                                    data_time  = data_time_m))
         
-            if (idx+1) % accelerator.gradient_accumulation_steps == 0:
-                if ((idx+1) // accelerator.gradient_accumulation_steps) % log_interval == 0: 
-                    _logger.info('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
-                                'Acc: {acc.avg:.3%} '
-                                'LR: {lr:.3e} '
-                                'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s ({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s) '
-                                'Data: {data_time.val:.3f} ({data_time.avg:.3f})'.format(
-                                (idx+1)//accelerator.gradient_accumulation_steps, 
-                                len(dataloader)//accelerator.gradient_accumulation_steps, 
-                                loss       = losses_m, 
-                                acc        = acc_m, 
-                                lr         = optimizer.param_groups[0]['lr'],
-                                batch_time = batch_time_m,
-                                rate       = inputs.size(0) / batch_time_m.val,
-                                rate_avg   = inputs.size(0) / batch_time_m.avg,
-                                data_time  = data_time_m))
-    
-            end = time.time()
-    
+                end = time.time()
+                
+                step += 1
+                
+                if step == steps_per_epoch:
+                    break
+
     # calculate metrics
     metrics = {}
     metrics.update([('acc',acc_m.avg), ('loss',losses_m.avg)])
@@ -309,11 +314,12 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
                 
 def fit(
     model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, query_model = None, **train_params
+    epochs: int, use_wandb: bool, log_interval: int, query_model = None, seed: int = 0, **train_params
 ) -> None:
 
     step = 0
     
+    torch_seed(seed)    
     for epoch in range(epochs):
         _logger.info(f'\nEpoch: {epoch+1}/{epochs}')
         
@@ -399,12 +405,21 @@ def full_run(
     )
     
     # optimizer
-    optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](
-        model.prompt.parameters() if cfg.MODEL.name == 'VPTAL' else model.parameters(), 
-        lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+    optimizer = create_optimizer(
+        opt_name   = cfg.OPTIMIZER.name, 
+        model      = model.prompt if cfg.MODEL.name == 'VPTAL' else model, 
+        lr         = cfg.OPTIMIZER.lr, 
+        opt_params = cfg.OPTIMIZER.get('params',{})
+    )
 
     # scheduler
-    scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
+    scheduler = create_scheduler(
+        sched_name    = cfg.SCHEDULER.name, 
+        optimizer     = optimizer, 
+        epochs        = cfg.TRAIN.epochs, 
+        params        = cfg.SCHEDULER.params,
+        warmup_params = cfg.SCHEDULER.get('warmup_params', {})
+    )
 
     # criterion 
     criterion = create_criterion(name=cfg.LOSS.name, params=cfg.LOSS.get('params', {}))
@@ -426,7 +441,8 @@ def full_run(
         accelerator  = accelerator,
         epochs       = cfg.TRAIN.epochs, 
         use_wandb    = cfg.TRAIN.wandb.use,
-        log_interval = cfg.TRAIN.log_interval
+        log_interval = cfg.TRAIN.log_interval,
+        seed         = cfg.DEFAULT.seed
     )
     
     # save model
@@ -534,7 +550,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         tta_params       = cfg.AL.get('tta_params', None),
         interval_type    = cfg.AL.get('interval_type', 'top'),
         resampler_params = cfg.AL.get('resampler_params', None),
-        params           = cfg.AL.get('params', {})
+        **cfg.AL.get('params', {})
     )
     
     # define train dataloader
@@ -606,10 +622,21 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             model = strategy.init_model()
         
         # optimizer
-        optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+        optimizer = create_optimizer(
+            opt_name   = cfg.OPTIMIZER.name, 
+            model      = model, 
+            lr         = cfg.OPTIMIZER.lr, 
+            opt_params = cfg.OPTIMIZER.get('params',{})
+        )
 
         # scheduler
-        scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
+        scheduler = create_scheduler(
+            sched_name    = cfg.SCHEDULER.name, 
+            optimizer     = optimizer, 
+            epochs        = cfg.TRAIN.epochs, 
+            params        = cfg.SCHEDULER.params,
+            warmup_params = cfg.SCHEDULER.get('warmup_params', {})
+        )
 
         # define test dataloader
         validloader = DataLoader(
@@ -636,7 +663,6 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         if cfg.TRAIN.wandb.use:
             wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
-        torch_seed(cfg.DEFAULT.seed)
         # fitting model
         fit(
             model        = model, 
@@ -650,6 +676,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             epochs       = cfg.TRAIN.epochs, 
             use_wandb    = cfg.TRAIN.wandb.use,
             log_interval = cfg.TRAIN.log_interval,
+            seed         = cfg.DEFAULT.seed,
             **cfg.TRAIN.get('params', {})
         )
         
@@ -818,7 +845,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         n_subset        = cfg.AL.n_subset,
         batch_size      = cfg.DATASET.batch_size, 
         num_workers     = cfg.DATASET.num_workers,
-        params          = openset_params
+        **openset_params
     )
     
     # define train dataloader
@@ -886,10 +913,22 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             model = strategy.init_model()
         
         # optimizer
-        optimizer = __import__('torch.optim', fromlist='optim').__dict__[cfg.OPTIMIZER.name](model.parameters(), lr=cfg.OPTIMIZER.lr, **cfg.OPTIMIZER.get('params',{}))
+        optimizer = create_optimizer(
+            opt_name   = cfg.OPTIMIZER.name, 
+            model      = model, 
+            lr         = cfg.OPTIMIZER.lr, 
+            opt_params = cfg.OPTIMIZER.get('params',{})
+        )
 
         # scheduler
-        scheduler = create_scheduler(sched_name=cfg.SCHEDULER.name, optimizer=optimizer, epochs=cfg.TRAIN.epochs, params=cfg.SCHEDULER.params)
+        scheduler = create_scheduler(
+            sched_name    = cfg.SCHEDULER.name, 
+            optimizer     = optimizer, 
+            epochs        = cfg.TRAIN.epochs, 
+            params        = cfg.SCHEDULER.params,
+            warmup_params = cfg.SCHEDULER.get('warmup_params', {})
+        )
+
 
         # define test dataloader
         validloader = create_id_testloader(
@@ -914,7 +953,6 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         if cfg.TRAIN.wandb.use:
             wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
-        torch_seed(cfg.DEFAULT.seed)
         # fitting model
         fit(
             model        = model, 
@@ -927,6 +965,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             epochs       = cfg.TRAIN.epochs, 
             use_wandb    = cfg.TRAIN.wandb.use,
             log_interval = cfg.TRAIN.log_interval,
+            seed         = cfg.DEFAULT.seed,
             **cfg.TRAIN.get('params', {})
         )
         
