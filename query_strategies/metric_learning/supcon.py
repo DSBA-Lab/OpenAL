@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import random
 
 from PIL import Image
@@ -8,8 +9,8 @@ from tqdm.auto import tqdm
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 
 from .factory import MetricLearning
-from .transform_layers import TwoCropTransform, get_simclr_aug
 from .losses import SupConLoss
+from .transform_layers import TwoCropTransform, get_simclr_aug
 
 
 class SupCon(MetricLearning):
@@ -19,8 +20,7 @@ class SupCon(MetricLearning):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.train_transform = train_transform
-        self.train_criterion = SupConLoss()
-        
+        self.criterion = SupConLoss()
     
     def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
         # set trainset        
@@ -43,7 +43,7 @@ class SupCon(MetricLearning):
         setattr(self, 'trainloader', trainloader)
         
             
-    def train(self, vis_encoder, optimizer, device: str):
+    def train(self, vis_encoder, optimizer, device: str, **kwargs):
         total_loss = 0
         
         desc = '[TRAIN] Loss: {loss:>6.4f}, Logit scaler: {scaler:>6.4f}'
@@ -61,8 +61,7 @@ class SupCon(MetricLearning):
             f1, f2 = torch.split(features, [bsz, bsz], dim=0)
             features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
             
-            loss = self.train_criterion(features=features, temperature=1/logit_scale, labels=targets)
-            
+            loss = self.criterion(features=features, temperature=1/logit_scale, labels=targets)
             total_loss += loss.item()
 
             optimizer.zero_grad()
@@ -78,6 +77,7 @@ class SupCon2(MetricLearning):
         super(SupCon2, self).__init__(**init_params)   
         
         self.train_transform = train_transform
+        self.criterion = nn.CrossEntropyLoss()
     
     def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
         # set trainset        
@@ -94,7 +94,7 @@ class SupCon2(MetricLearning):
         # set attributions for trainset and testset
         setattr(self, 'trainset', trainset)
     
-    def train(self, vis_encoder, optimizer, device: str):
+    def train(self, vis_encoder, optimizer, device: str, **kwargs):
         total_loss = 0
         
         desc = '[TRAIN] Loss: {loss:>6.4f}, Logit scaler: {scaler:>6.4f}'
@@ -118,7 +118,6 @@ class SupCon2(MetricLearning):
             loss1 = self.criterion(similarity, targets_i)
             loss2 = self.criterion(similarity.t(), targets_i)
             loss = (loss1 + loss2) / 2
-            
             total_loss += loss.item()
 
             optimizer.zero_grad()
