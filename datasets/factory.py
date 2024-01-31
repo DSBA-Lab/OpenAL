@@ -186,6 +186,11 @@ def create_dataset(
     validset.dataname = dataname.lower()
     testset.dataname = dataname.lower()
     
+    # set img size
+    trainset.img_size = (img_size, img_size)
+    validset.img_size = (img_size, img_size)
+    testset.img_size = (img_size, img_size)
+    
     return trainset, validset, testset
 
 
