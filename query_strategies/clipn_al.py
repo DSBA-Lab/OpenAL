@@ -67,21 +67,26 @@ class CLIPNAL(Strategy):
             self.metric_learning = create_metric_learning(
                 method_name     = metric_params['method_name'],
                 vis_encoder     = SupConModel(image_encoder=deepcopy(self.vis_clf.image_encoder)), 
-                criterion       = nn.CrossEntropyLoss(), 
                 epochs          = metric_params['epochs'], 
                 train_transform = self.clipn_train_transform, 
                 opt_name        = metric_params['opt_name'], 
                 lr              = metric_params['lr'], 
-                seed            = seed, 
                 opt_params      = metric_params['opt_params'],
+                sched_name      = metric_params['sched_name'],
+                sched_params    = metric_params['sched_params'],
+                warmup_params   = metric_params.get('warmup_params', {}),
+                seed            = seed, 
                 **metric_params.get('train_params', {})
             )
     
     def init_model(self):
-        return deepcopy(self.model)
+        return self.query_strategy.init_model()
     
     def init_al_model(self):
         return deepcopy(self.vis_clf)
+    
+    def loss_fn(self, outputs, targets):
+        return self.query_strategy.loss_fn(outputs=outputs, targets=targets)
       
     def query(self, model, **kwargs):
         # device
