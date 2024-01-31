@@ -191,6 +191,11 @@ def create_dataset(
     validset.img_size = (img_size, img_size)
     testset.img_size = (img_size, img_size)
     
+    # set mean and std
+    trainset.stats = {'mean':mean, 'std':std}
+    validset.stats = {'mean':mean, 'std':std}
+    testset.stats = {'mean':mean, 'std':std}
+    
     return trainset, validset, testset
 
 
