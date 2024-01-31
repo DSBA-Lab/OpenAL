@@ -2,7 +2,7 @@ from timm import create_model as _create_model
 import torch.nn as nn
 
 def create_model(
-    modelname: str, num_classes: int, pretrained: bool = False, **params):
+    modelname: str, num_classes: int = 0, pretrained: bool = False, **params):
     
     query_model = None
     
