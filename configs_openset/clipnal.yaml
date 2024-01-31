@@ -16,3 +16,7 @@ AL:
       lr: 0.00001
       opt_params:
         weight_decay: 0.00005
+      sched_name: cosine_annealing
+      sched_params:
+        t_mult: 1
+        eta_min: 0

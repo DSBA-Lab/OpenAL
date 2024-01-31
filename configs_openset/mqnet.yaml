@@ -1,0 +1,44 @@
+AL:
+  strategy: MQNet
+  ood_ratio: 0.1
+  nb_id_class: 4
+  openset_params:
+    selected_strategy: LearningLossAL
+    meta_params:
+      dim: 64
+      epochs: 100
+      steps_per_epoch: 100
+      batch_size: 32
+      num_workers: 8
+      margin: 1.0
+      opt_name: SGD
+      lr: 0.001
+      sched_name: multi_step
+      sched_params:
+        milestones:
+          - 50
+    metric_params:
+      modelname: resnet18
+      pretrained: false
+      simclr_dim: 128
+      shift_trans_type: rotation
+      sim_lambda: 1.0
+      epochs: 1000
+      batch_size: 32
+      num_workers: 8
+      opt_name: SGD
+      lr: 0.1
+      opt_params:
+        momentum: 0.9
+        weight_decay: 0.0005
+        LARS:
+          eps: 1e-8
+          trust_coef: 0.001
+      sched_name: cosine_annealing
+      sched_params:
+        t_mult: 1
+        eta_min: 0
+      warmup_params:
+        use: True
+        multiplier: 10.0
+        warmup: 10

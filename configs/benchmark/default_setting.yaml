@@ -11,7 +11,7 @@ DATASET:
     - RandomResizedCrop
     - RandomHorizontalFlip
 OPTIMIZER:
-  name: AdamW
+  name: SGD
   lr: 0.1
   params:
     weight_decay: 0.0005
@@ -26,9 +26,9 @@ TRAIN:
   mixed_precision: fp16
   log_interval: 10
   wandb:
-    use: true
-    entity: tootouch
-    project_name: AL - generalization
+    use: false
+    entity: null
+    project_name: null
   params:
     metrics_off: false
 LOSS:
