@@ -19,7 +19,7 @@ from .transform_layers import get_simclr_aug, get_simclr_augmentation, TwoCropTr
 
 
 class SimCLRCSI(MetricLearning):
-    def __init__(self, dataname: str, img_size: int, batch_size: int, num_workers: int, shift_trans_type: str = 'rotation', sim_lambda: float = 1.0, **init_params):
+    def __init__(self, batch_size: int, num_workers: int, shift_trans_type: str = 'rotation', sim_lambda: float = 1.0, **init_params):
         super(SimCLRCSI, self).__init__(**init_params)
         
         self.sim_lambda = sim_lambda
@@ -27,20 +27,10 @@ class SimCLRCSI(MetricLearning):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.temperature = 0.5
-        self.criterion = SupConLoss()
         self.clf_criterion = nn.CrossEntropyLoss()
         
         # get shift transform
         self.get_shift_module(shift_trans_type=shift_trans_type)
-        
-        self.dataname = dataname
-        
-        # simclr_aug
-        aug_info = ['ColorJitter', 'RandomGrayscale', 'RandomResizedCrop']
-        aug_info = aug_info[:-1] if dataname == 'imagenet' else aug_info
-        
-        # self.simclr_aug = get_simclr_aug(img_size=img_size, aug_info=aug_info)
-        self.simclr_aug = get_simclr_augmentation(img_size=img_size)
         
         # hflip
         self.hflip = HorizontalFlipLayer()
@@ -48,11 +38,30 @@ class SimCLRCSI(MetricLearning):
     def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
         # set trainset        
         trainset = deepcopy(dataset)
+        
+        # simclr_aug
+        aug_info = ['ToTensor', 'ColorJitter', 'RandomGrayscale', 'RandomResizedCrop']
+        aug_info = aug_info[:-1] if trainset.dataname == 'imagenet' else aug_info
+        
+        simclr_aug = get_simclr_aug(
+            img_size  = trainset.img_size, 
+            aug_info  = aug_info, 
+            normalize = transforms.Normalize(dataset.stats['mean'], dataset.stats['std'])
+        )
+        
+        trainset.transform = simclr_aug
         # trainset.transform = self.create_transform()
-        trainloader = DataLoader(trainset, sampler=SubsetRandomSampler(indices=sample_idx), batch_size=self.batch_size, num_workers=self.num_workers)
+        trainloader = DataLoader(
+            trainset, 
+            sampler     = SubsetRandomSampler(indices=sample_idx), 
+            batch_size  = self.batch_size, 
+            num_workers = self.num_workers,
+            pin_memory  = True
+        )
         
         # set attributions for trainloader and testset
         setattr(self, 'trainloader', trainloader)
+        setattr(self, 'dataname', trainset.dataname)
         
     def create_transform(self, test: bool = False):
         if self.dataname == 'imagenet':
@@ -86,7 +95,7 @@ class SimCLRCSI(MetricLearning):
         p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], sim_loss=0, shift_loss=0), leave=False)
         
         self.hflip.to(device)
-        self.simclr_aug.to(device)
+        # self.simclr_aug.to(device)
         
         vis_encoder.train()
         
@@ -104,7 +113,7 @@ class SimCLRCSI(MetricLearning):
             shift_labels = shift_labels.repeat(2).to(device)
             
             images_pair = torch.cat([images1, images2], dim=0)
-            images_pair = self.simclr_aug(images_pair)  # simclr augment
+            # images_pair = self.simclr_aug(images_pair)  # simclr augment
             outputs = vis_encoder(images_pair, shift=True)
             
             # features = torch.stack(outputs['simclr'].chunk(2), dim=1)

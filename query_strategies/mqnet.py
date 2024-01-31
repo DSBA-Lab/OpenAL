@@ -69,8 +69,6 @@ class MQNet(Strategy):
         self.csi = create_metric_learning(
             method_name      = 'SimCLRCSI',
             vis_encoder      = vis_encoder,
-            dataname         = self.dataset.dataname,
-            img_size         = self.dataset.img_size,
             sim_lambda       = metric_params['sim_lambda'],
             epochs           = metric_params['epochs'],
             batch_size       = metric_params['batch_size'], 
