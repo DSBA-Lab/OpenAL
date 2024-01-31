@@ -57,7 +57,6 @@ class ViT_Classifier(torch.nn.Module):
         flag = True
         self.fc_yes = nn.Parameter(classification_head_yes, requires_grad=flag)    # num_classes  num_feat_dimension
         self.fc_no = nn.Parameter(classification_head_no, requires_grad=flag)      # num_classes  num_feat_dimension
-        self.scale = 100. # this is from the parameter of logit scale in CLIPN
         
     def set_frozen(self, module):
         for module_name in module.named_parameters():
@@ -72,8 +71,8 @@ class ViT_Classifier(torch.nn.Module):
         fc_yes = F.normalize(self.fc_yes, dim=-1)
         fc_no = F.normalize(self.fc_no, dim=-1)
         
-        logits_yes = self.scale * inputs_norm @ fc_yes.T 
-        logits_no = self.scale * inputs_norm @ fc_no.T
+        logits_yes = inputs_norm @ fc_yes.T 
+        logits_no = inputs_norm @ fc_no.T
         return logits_yes, logits_no, inputs
     
     def save(self, path = "./"):
