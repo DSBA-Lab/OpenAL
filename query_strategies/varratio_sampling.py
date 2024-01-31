@@ -23,6 +23,6 @@ class VarRatioSampling(Strategy):
         )['probs']
         
         preds = probs.max(dim=1)[0]
-        uncertainties = (1.0 - preds).sort(descending = True)[1]
+        uncertainties = (1.0 - preds)
         
-        return uncertainties
+        return uncertainties, uncertainties.sort(descending=True)[1]

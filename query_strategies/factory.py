@@ -12,11 +12,11 @@ def create_query_strategy(
         batch_size: int, 
         num_workers: int, 
         n_subset: int = 0, 
-        params: dict = dict(), 
         tta_agg: str = None, 
         tta_params: dict = None, 
         interval_type: str = 'top', 
-        resampler_params: dict = None
+        resampler_params: dict = None,
+        **params
     ):
     
     strategy = __import__('query_strategies').__dict__[strategy_name](

@@ -174,7 +174,10 @@ class Strategy:
     def get_unlabeled_idx(self):
         
         # get unlabeled index
-        unlabeled_idx = np.where(self.is_labeled==False)[0]
+        if self.is_openset:
+            unlabeled_idx = np.where(self.is_unlabeled==True)[0]        
+        else:
+            unlabeled_idx = np.where(self.is_labeled==False)[0]
             
         # subsampling
         if self.n_subset > 0:
