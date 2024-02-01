@@ -42,7 +42,7 @@ class MQNet(Strategy):
                 
         # meta learning
         self.meta_learning = MetaLearning(
-            num_id_classes  = self.num_id_classes,
+            num_id_class    = self.num_id_class,
             savedir         = self.savedir, 
             dim             = meta_params['dim'],
             epochs          = meta_params['epochs'],
@@ -63,12 +63,14 @@ class MQNet(Strategy):
         vis_encoder = MetricModel(
             modelname   = metric_params['modelname'], 
             pretrained  = metric_params['pretrained'],
+            nb_id_class = self.num_id_class,
             simclr_dim  = metric_params['simclr_dim'],
             **metric_params.get('model_params', {})
         )
         self.csi = create_metric_learning(
             method_name      = 'SimCLRCSI',
             vis_encoder      = vis_encoder,
+            num_id_class     = self.num_id_class,
             dataname         = self.dataset.dataname,
             img_size         = self.dataset.img_size,
             sim_lambda       = metric_params['sim_lambda'],
@@ -238,7 +240,7 @@ class QueryNet(nn.Module):
 class MetaLearning:
     def __init__(
         self, 
-        num_id_classes: int,
+        num_id_class: int,
         savedir: str,
         dim: int = 64,
         epochs: int = 100,
@@ -257,7 +259,7 @@ class MetaLearning:
     ):
         
         self.mqnet = QueryNet(inter_dim=dim)
-        self.num_id_classes = num_id_classes
+        self.num_id_class = num_id_class
         
         # training
         self.epochs = epochs
@@ -355,7 +357,7 @@ class MetaLearning:
             for idx, (inputs, inputs_meta, targets) in enumerate(self.trainloader):   
                 inputs, inputs_meta, targets = inputs.to(device), inputs_meta.to(device), targets.to(device)
                 
-                is_id = targets.le(self.num_id_classes-1).type(torch.LongTensor).to(device)
+                is_id = targets.le(self.num_id_class-1).type(torch.LongTensor).to(device)
 
                 # get pred_scores through MQNet
                 outputs_meta = mqnet(inputs_meta).squeeze()

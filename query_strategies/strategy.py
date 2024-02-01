@@ -59,7 +59,7 @@ class Strategy:
             self.is_unlabeled = is_unlabeled
             self.is_ood = is_ood
             self.id_classes = id_classes
-            self.num_id_classes = len(id_classes)
+            self.num_id_class = len(id_classes)
                         
         # for datasets
         self.dataset = dataset
@@ -124,8 +124,8 @@ class Strategy:
         targets = get_target_from_dataset(self.dataset)
                
         query_targets = targets[query_idx]
-        id_idx = np.where(query_targets < self.num_id_classes)[0]
-        ood_idx = np.where(query_targets == self.num_id_classes)[0]
+        id_idx = np.where(query_targets < self.num_id_class)[0]
+        ood_idx = np.where(query_targets == self.num_id_class)[0]
         
         id_query_idx = query_idx[id_idx]
         ood_query_idx = query_idx[ood_idx]
