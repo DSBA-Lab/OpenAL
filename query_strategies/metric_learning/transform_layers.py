@@ -13,7 +13,7 @@ else:
     kwargs = {}
 
 
-def get_simclr_augmentation(img_size):
+def get_simclr_augmentation(img_size: tuple, dataname: str):
     # parameter for resizecrop
     resize_scale = (0.08, 1.0) # resize scaling factor
 
@@ -22,24 +22,19 @@ def get_simclr_augmentation(img_size):
     color_gray = RandomColorGrayLayer(p=0.2)
     resize_crop = RandomResizedCropLayer(scale=resize_scale, size=img_size)
 
-    # Transform define #
-    # if dataname == 'imagenet': # Using RandomResizedCrop at PIL transform
-    #     transform = nn.Sequential(
-    #         color_jitter,
-    #         color_gray,
-    #     )
-    # else:
-    #     transform = nn.Sequential(
-    #         color_jitter,
-    #         color_gray,
-    #         resize_crop,
-    #     )
+    # Transform define
+    if dataname == 'imagenet': # Using RandomResizedCrop at PIL transform
+        transform = nn.Sequential(
+            color_jitter,
+            color_gray,
+        )
+    else:
+        transform = nn.Sequential(
+            color_jitter,
+            color_gray,
+            resize_crop,
+        )
         
-    transform = nn.Sequential(
-        color_jitter,
-        color_gray,
-        resize_crop,
-    )
     return transform
 
 class RandomResizedCropLayer(nn.Module):

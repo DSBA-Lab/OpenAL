@@ -14,15 +14,14 @@ from tqdm.auto import tqdm
 from torch.utils.data import DataLoader, SubsetRandomSampler
 
 from .factory import MetricLearning
-from .losses import SupConLoss, nt_xent_loss
-from .transform_layers import get_simclr_aug, get_simclr_augmentation, TwoCropTransform, HorizontalFlipLayer, Rotation, CutPerm
+from .losses import nt_xent_loss
+from .transform_layers import get_simclr_augmentation, HorizontalFlipLayer, Rotation, CutPerm
 
 
 class SimCLRCSI(MetricLearning):
     def __init__(
         self, 
         dataname: str, 
-        num_id_class: int,
         img_size: int, 
         batch_size: int, 
         num_workers: int, 
@@ -34,12 +33,9 @@ class SimCLRCSI(MetricLearning):
         
         self.sim_lambda = sim_lambda
         
-        self.num_id_class = num_id_class
-        
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.temperature = 0.5
-        self.criterion = SupConLoss()
         self.clf_criterion = nn.CrossEntropyLoss()
         
         # get shift transform
@@ -51,8 +47,7 @@ class SimCLRCSI(MetricLearning):
         aug_info = ['ColorJitter', 'RandomGrayscale', 'RandomResizedCrop']
         aug_info = aug_info[:-1] if dataname == 'imagenet' else aug_info
         
-        # self.simclr_aug = get_simclr_aug(img_size=img_size, aug_info=aug_info)
-        self.simclr_aug = get_simclr_augmentation(img_size=img_size)
+        self.simclr_aug = get_simclr_augmentation(img_size=img_size, dataname=dataname)
         
         # hflip
         self.hflip = HorizontalFlipLayer()
@@ -96,11 +91,9 @@ class SimCLRCSI(MetricLearning):
         for idx, (images, targets) in enumerate(p_bar):          
             # augment images
             if self.dataname != 'imagenet':
-                batch_size = images.size(0)
                 images = images.to(device)
                 images1, images2 = self.hflip(images.repeat(2, 1, 1, 1)).chunk(2)  # hflip
             else:
-                batch_size = images[0].size(0)
                 images1, images2 = images[0].to(device), images[1].to(device)
             
             images1 = torch.cat([self.shift_transform(images1, k) for k in range(self.k_shift)])
@@ -128,21 +121,6 @@ class SimCLRCSI(MetricLearning):
             optimizer['vis_encoder'].step()
             
             scheduler.step(epoch - 1 + idx / len(self.trainloader))
-            
-            # ### Post-processing stuffs ###
-            # penul_1 = outputs['features'][:batch_size]
-            # penul_2 = outputs['features'][self.k_shift * batch_size: (self.k_shift + 1) * batch_size]
-            # outputs['features'] = torch.cat([penul_1, penul_2])  # only use original rotation
-
-            # ### Linear evaluation ###
-            # outputs_linear_eval = vis_encoder.linear(outputs['features'].detach())
-
-            # id_idx = np.where(targets.cpu().numpy() < self.num_id_class)[0]
-            # loss_linear = self.clf_criterion(outputs_linear_eval[id_idx], targets[id_idx].type(torch.LongTensor).to(device))  # .repeat(2)
-
-            # optimizer['linear'].zero_grad()
-            # loss_linear.backward()
-            # optimizer['linear'].step()
             
             p_bar.set_description(
                 desc=desc.format(
@@ -176,13 +154,12 @@ class SimCLR(MetricLearning):
         
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.criterion = SupConLoss()
         self.temperature = 0.5
         
         self.dataname = dataname
         
         # simclr_aug
-        self.simclr_aug = get_simclr_augmentation(img_size=img_size)
+        self.simclr_aug = get_simclr_augmentation(img_size=img_size, dataname=dataname)
         
         # hflip
         self.hflip = HorizontalFlipLayer()

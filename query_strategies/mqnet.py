@@ -63,7 +63,6 @@ class MQNet(Strategy):
         vis_encoder = MetricModel(
             modelname   = metric_params['modelname'], 
             pretrained  = metric_params['pretrained'],
-            nb_id_class = self.num_id_class,
             simclr_dim  = metric_params['simclr_dim'],
             **metric_params.get('model_params', {})
         )

@@ -3,13 +3,12 @@ import torch.nn.functional as F
 from models import create_model
 
 class MetricModel(nn.Module):
-    def __init__(self, modelname: str, nb_id_class: int, pretrained: bool = False, simclr_dim: int = 128, **model_params):
+    def __init__(self, modelname: str, pretrained: bool = False, simclr_dim: int = 128, **model_params):
         super().__init__()
         
         _, self.model = create_model(modelname=modelname, pretrained=pretrained, **model_params)
         self.num_features = self.model.num_features
-        
-        self.linear = nn.Linear(self.num_features, nb_id_class)
+
         self.simclr_layer = nn.Sequential(
             nn.Linear(self.num_features, self.num_features),
             nn.ReLU(),
@@ -29,7 +28,6 @@ class MetricModel(nn.Module):
         outputs = {}
         
         features = self.model(x)
-        outputs['features'] = features
         outputs['simclr'] = F.normalize(self.simclr_layer(features), dim=1)
 
         if shift:
