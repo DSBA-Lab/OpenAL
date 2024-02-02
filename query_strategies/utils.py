@@ -5,6 +5,7 @@ import numpy as np
 import re
 import json
 from _ctypes import PyObj_FromPtr  # see https://stackoverflow.com/a/15012814/355230
+from torch.utils.data import IterableDataset
 
 def get_target_from_dataset(dataset):
     # if class name is ALDataset
@@ -78,3 +79,22 @@ class MyEncoder(json.JSONEncoder):
                             '"{}"'.format(format_spec.format(id)), json_repr)
 
             yield encoded
+            
+            
+class TrainIterableDataset(IterableDataset):
+    def __init__(self, dataset, sample_idx: np.ndarray = None):
+        for k, v in dataset.__dict__.items():
+            setattr(self, k, v)
+            
+        self.sample_idx = sample_idx if isinstance(sample_idx, np.ndarray) else np.arange(len(dataset))
+
+    def generate(self):
+        while True:
+            idx = np.random.choice(a=self.sample_idx, size=1, replace=False)[0]
+            img, target = self.data[idx], self.targets[idx]
+            img = self.transform(img)
+        
+            yield img, target
+
+    def __iter__(self):
+        return iter(self.generate())
