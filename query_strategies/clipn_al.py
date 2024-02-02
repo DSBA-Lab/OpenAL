@@ -231,7 +231,7 @@ class CLIPNAL(Strategy):
         if score_c != None:
             logits_yes *= (score_c * logit_scale).softmax(dim=1)
             id_score = logits_yes.max(dim=1)[0]
-            ood_score /= self.num_id_classes
+            ood_score /= self.num_id_class
             
         # set probs
         probs_id_ood = torch.zeros(len(logits_yes), 2)
@@ -329,8 +329,8 @@ class CLIPNAL(Strategy):
         ulb_targets = targets[ulb_sample_idx]
         
         # get ID and OOD index from unlabeled samples
-        id_idx = [i for i, t in enumerate(ulb_targets) if t < self.num_id_classes]
-        ood_idx = [i for i, t in enumerate(ulb_targets) if t == self.num_id_classes]
+        id_idx = [i for i, t in enumerate(ulb_targets) if t < self.num_id_class]
+        ood_idx = [i for i, t in enumerate(ulb_targets) if t == self.num_id_class]
         nb_ulb = len(id_idx) + len(ood_idx)
         
         # set predictions
@@ -339,7 +339,7 @@ class CLIPNAL(Strategy):
         y_pred = y_pred[ulb_sample_idx]
         
         # set targets
-        y_true = np.array([1 if t < self.num_id_classes else 0 for t in ulb_targets])
+        y_true = np.array([1 if t < self.num_id_class else 0 for t in ulb_targets])
         
         # calc acc
         total_acc = (y_pred == y_true).sum() / nb_ulb
@@ -388,8 +388,8 @@ class CLIPNAL(Strategy):
         y_true = targets[ulb_sample_idx]
         
         # get ID and OOD index from unlabeled samples
-        id_idx = [i for i, t in enumerate(y_true) if t < self.num_id_classes]
-        ood_idx = [i for i, t in enumerate(y_true) if t == self.num_id_classes]
+        id_idx = [i for i, t in enumerate(y_true) if t < self.num_id_class]
+        ood_idx = [i for i, t in enumerate(y_true) if t == self.num_id_class]
         nb_ulb = len(id_idx) + len(ood_idx)
                
         # calc acc

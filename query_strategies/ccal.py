@@ -265,9 +265,9 @@ class CCAL(Strategy):
 
         
     def get_n_query_cls(self):
-        n_query_cls = [int(self.n_query / self.num_id_classes) for _ in self.num_id_classes]
+        n_query_cls = [int(self.n_query / self.num_id_class) for _ in self.num_id_class]
         
-        # if n_query does not be divided by num_id_classes, then add one in each class for the remainder and shuffle
+        # if n_query does not be divided by num_id_class, then add one in each class for the remainder and shuffle
         if sum(n_query_cls) < self.n_query:
             remain = self.n_query - sum(n_query_cls)
             for i in range(remain):
