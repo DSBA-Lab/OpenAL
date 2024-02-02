@@ -81,7 +81,7 @@ class SimCLRCSI(MetricLearning):
         total_shift_loss = 0
         
         desc = '[TRAIN] LR: {lr:.3e} Sim Loss: {sim_loss:>6.4f} Shift Loss: {shift_loss:>6.4f}'
-        p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer['vis_encoder'].param_groups[0]['lr'], sim_loss=0, shift_loss=0), leave=False)
+        p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], sim_loss=0, shift_loss=0), leave=False)
         
         self.hflip.to(device)
         self.simclr_aug.to(device)
@@ -116,15 +116,15 @@ class SimCLRCSI(MetricLearning):
             total_sim_loss += loss_sim.item()
             total_shift_loss += loss_shift.item()
 
-            optimizer['vis_encoder'].zero_grad()
+            optimizer.zero_grad()
             loss.backward()
-            optimizer['vis_encoder'].step()
+            optimizer.step()
             
             scheduler.step(epoch - 1 + idx / len(self.trainloader))
             
             p_bar.set_description(
                 desc=desc.format(
-                    lr         = optimizer['vis_encoder'].param_groups[0]['lr'], 
+                    lr         = optimizer.param_groups[0]['lr'], 
                     sim_loss   = total_sim_loss/(idx+1), 
                     shift_loss = total_shift_loss/(idx+1)
                 )
@@ -150,7 +150,7 @@ class SimCLRCSI(MetricLearning):
     
 class SimCLR(MetricLearning):
     def __init__(self, dataname: str, img_size: int, batch_size: int, num_workers: int, **init_params):
-        super(SimCLRCSI, self).__init__(**init_params)
+        super(SimCLR, self).__init__(**init_params)
         
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -198,6 +198,7 @@ class SimCLR(MetricLearning):
         p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], loss=total_loss), leave=False)
         
         self.hflip.to(device)
+        self.simclr_aug.to(device)
         
         vis_encoder.train()
         

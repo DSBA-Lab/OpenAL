@@ -82,14 +82,11 @@ class MetricLearning:
         self.create_trainset(dataset=dataset, sample_idx=sample_idx, **kwargs)
 
         # optimizer
-        optimizer = {}
-        optimizer['vis_encoder'] = create_optimizer(opt_name=self.opt_name, model=vis_encoder, lr=self.lr, opt_params=self.opt_params)
-        if getattr(vis_encoder, 'linear', False):
-            optimizer['linear'] = torch.optim.Adam(vis_encoder.linear.parameters(), lr=1e-3, betas=(.9, .999), weight_decay=5e-4)
+        optimizer = create_optimizer(opt_name=self.opt_name, model=vis_encoder, lr=self.lr, opt_params=self.opt_params)
 
         scheduler = create_scheduler(
             sched_name    = self.sched_name, 
-            optimizer     = optimizer['vis_encoder'],
+            optimizer     = optimizer,
             epochs        = self.epochs, 
             params        = self.sched_params,
             warmup_params = self.warmup_params
@@ -102,7 +99,7 @@ class MetricLearning:
             p_bar.set_description(
                 desc=desc.format(
                     name = self.__class__.__name__, 
-                    lr   = optimizer['vis_encoder'].param_groups[0]['lr']
+                    lr   = optimizer.param_groups[0]['lr']
                 )
             )
             self.train(epoch=epoch, vis_encoder=vis_encoder, optimizer=optimizer, scheduler=scheduler, device=device)
