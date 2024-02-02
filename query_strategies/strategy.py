@@ -139,7 +139,7 @@ class Strategy:
         
         if self.trainloader_type == 'step':
             dataloader = DataLoader(
-                dataset     = TrainIterableDataset(dataset=self.dataset, sample_idx=np.where(self.is_labeled==True)[0]),
+                dataset     = TrainIterableDataset(dataset=deepcopy(self.dataset), sample_idx=np.where(self.is_labeled==True)[0]),
                 batch_size  = self.batch_size,
                 num_workers = self.num_workers,
             )
