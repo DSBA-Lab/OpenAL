@@ -182,10 +182,7 @@ class SimCLR(MetricLearning):
         self.dataname = dataname
         
         # simclr_aug
-        aug_info = ['ColorJitter', 'RandomGrayscale', 'RandomResizedCrop']
-        aug_info = aug_info[:-1] if dataname == 'imagenet' else aug_info
-        
-        self.simclr_aug = get_simclr_aug(img_size=img_size, aug_info=aug_info)
+        self.simclr_aug = get_simclr_augmentation(img_size=img_size)
         
         # hflip
         self.hflip = HorizontalFlipLayer()
@@ -194,35 +191,26 @@ class SimCLR(MetricLearning):
         
         # set trainset        
         trainset = deepcopy(dataset)
-        trainset.transform = self.create_transform()
-        trainloader = DataLoader(trainset, sampler=SubsetRandomSampler(indices=sample_idx), batch_size=self.batch_size, num_workers=self.num_workers)
+        trainset.transform = self.create_transform(img_size=dataset.img_size, **dataset.stats)
+        trainloader = DataLoader(
+            trainset, 
+            sampler     = SubsetRandomSampler(indices=sample_idx),
+            batch_size  = self.batch_size, 
+            num_workers = self.num_workers,
+        )
         
         # set attributions for trainloader and testset
         setattr(self, 'trainloader', trainloader)
         
         
-    def create_transform(self, test: bool = False):
-        if self.dataname == 'imagenet':
-            if test:
-                transform = transforms.Compose([
-                    transforms.Resize(256),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor()
-                ])
-            else:
-                transform = transforms.Compose([
-                    transforms.Resize(256),
-                    transforms.RandomResizedCrop(224),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                ])
-                transform = TwoCropTransform(transform)
-            
-        else:
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-            ])
-            
+    def create_transform(self, img_size, mean: tuple, std: tuple):
+        transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(size=img_size, padding=4),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+        
         return transform
             
             
@@ -247,11 +235,11 @@ class SimCLR(MetricLearning):
             
             images_pair = self.simclr_aug(images_pair)  # simclr augment
             outputs = vis_encoder(images_pair)
-                       
-            features = torch.stack(outputs['simclr'].chunk(2), dim=1)
+            
+            features = torch.matmul(outputs['simclr'], outputs['simclr'].t())
             
             # loss
-            loss = self.criterion(features, temperature=self.temperature)
+            loss = nt_xent_loss(features, temperature=self.temperature)
             total_loss += loss.item()
 
             optimizer.zero_grad()
