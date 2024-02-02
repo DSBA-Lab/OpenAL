@@ -128,7 +128,7 @@ class MQNet(Strategy):
         meta_scores = self.get_meta_scores(meta_inputs=meta_inputs, device=device)
             
         # select query
-        score_rank = meta_scores.sort(descending=False)[1]
+        score_rank = meta_scores.sort(descending=True)[1]
         query_rank = score_rank[:self.n_query]
         select_idx = unlabeled_idx[query_rank]
         
