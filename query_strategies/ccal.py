@@ -7,7 +7,6 @@ import torch
 from torch.utils.data import DataLoader
 
 from query_strategies.metric_learning import create_metric_learning, MetricModel
-from .factory import create_query_strategy
 from .strategy import Strategy
 from .sampler import SubsetSequentialSampler
 from .utils import torch_seed, get_target_from_dataset
@@ -19,21 +18,12 @@ class CCAL(Strategy):
         t: float,
         seed: int, 
         savedir: str, 
-        selected_strategy: str, 
         semantic_params: dict = {}, 
         distinctive_params: dict = {}, 
         **init_args
     ):
         
         super(CCAL, self).__init__(**init_args)
-        
-        # make query strategy
-        del_keys = ['is_openset', 'is_unlabeled', 'is_ood', 'id_classes']
-        for k in del_keys:
-            del init_args[k]
-        
-        self.query_strategy = create_query_strategy(strategy_name=selected_strategy, **init_args)
-        assert 'get_scores' in dir(self.query_strategy), f'{selected_strategy} is not able to obtain an informativeness score.'
         
         self.savedir = savedir
         self.seed = seed
@@ -93,9 +83,6 @@ class CCAL(Strategy):
         # semantic parameters
         self.k = k
         self.t = t
-        
-    def init_model(self):
-        return self.query_strategy.init_model()
     
     def query(self, model, **kwargs) -> np.ndarray:
         # device
@@ -137,7 +124,8 @@ class CCAL(Strategy):
             vis_encoder = distinctive_encoder, 
             sample_idx  = unlabeled_idx, 
             cl_class    = self.distinctive_cl,
-            device      = device
+            device      = device,
+            desc        = 'Distinctive Unlabeled'
         )
         
         # lb_normalized_embed_dis  ( k_shift x (N_lb,t) x d) in t list )
@@ -148,7 +136,8 @@ class CCAL(Strategy):
                 vis_encoder = distinctive_encoder, 
                 sample_idx  = np.where(lb_targets==t)[0],
                 cl_class    = self.distinctive_cl,
-                device      = device
+                device      = device,
+                desc        = f'Distinctive Labeled-target{t}'
             )
             lb_normalized_embed_dis.append(lb_normalized_embed_dis_t)
         
@@ -158,7 +147,8 @@ class CCAL(Strategy):
             vis_encoder = semantic_encoder, 
             sample_idx  = unlabeled_idx, 
             cl_class    = self.semantic_cl,
-            device      = device
+            device      = device,
+            desc        = 'Semantic Unlabeled'
         )
         
         # lb_normalized_embed_sem ( k_shift x N_lb x d )
@@ -166,7 +156,8 @@ class CCAL(Strategy):
             vis_encoder = semantic_encoder, 
             sample_idx  = labeled_idx, 
             cl_class    = self.semantic_cl,
-            device      = device
+            device      = device,
+            desc        = 'Distinctive Label'
         )
         
         # get distictive scores in each class for unlabeled samples ( N_ulb in t list )
@@ -264,7 +255,7 @@ class CCAL(Strategy):
 
         
     def get_n_query_cls(self):
-        n_query_cls = [int(self.n_query / self.num_id_class) for _ in self.num_id_class]
+        n_query_cls = [int(self.n_query / self.num_id_class) for _ in range(self.num_id_class)]
         
         # if n_query does not be divided by num_id_class, then add one in each class for the remainder and shuffle
         if sum(n_query_cls) < self.n_query:
@@ -276,11 +267,11 @@ class CCAL(Strategy):
         return n_query_cls
     
     
-    def get_features(self, vis_encoder, sample_idx, cl_class, device: str):
+    def get_features(self, vis_encoder, sample_idx, cl_class, device: str, desc: str = ''):
         torch_seed(self.seed)
         
         dataset = deepcopy(self.dataset)
-        dataset.transform = cl_class.create_transform(test=True)
+        dataset.transform = self.test_transform
         
         dataloader = DataLoader(
             dataset     = dataset, 
@@ -290,22 +281,25 @@ class CCAL(Strategy):
         )
         
         cl_class.hflip.to(device)
+        cl_class.simclr_aug.to(device)
+
+        k_shift = getattr(cl_class, 'k_shift', 1)
         
         vis_encoder.eval()
         
         features = []
-        p_bar = tqdm(dataloader, desc='Get outputs [Embed]', leave=False)
+        p_bar = tqdm(dataloader, desc=f'Get outputs [{desc} Embed]')
         with torch.no_grad():
             for idx, (images, targets) in enumerate(p_bar):          
                 # augment images                
                 images = images.to(device)
-                if cl_class.k_shift > 1:
+                if k_shift > 1:
                     images = torch.cat([cl_class.shift_transform(cl_class.hflip(images), k) for k in range(cl_class.k_shift)])
                 images = cl_class.simclr_aug(images)
                 
                 # outputs
                 features_i = vis_encoder(images)['simclr']
-                features_i = torch.stack(features_i.chunk(cl_class.k_shift, dim=0), dim=1).cpu()
+                features_i = torch.stack(features_i.chunk(k_shift, dim=0), dim=1).cpu()
                 
                 features.append(features_i)
                 

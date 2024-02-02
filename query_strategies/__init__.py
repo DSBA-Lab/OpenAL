@@ -14,6 +14,7 @@ from .prompt_uncertainty import PromptUncertainty
 from .prompt_ensemble import PromptEnsemble
 from .mqnet import MQNet
 from .clipn_al import CLIPNAL
+from .ccal import CCAL
 from .factory import create_query_strategy
 from .sampler import SubsetSequentialSampler, SubsetWeightedRandomSampler
 from .scheds import create_scheduler
