@@ -142,7 +142,6 @@ class Strategy:
                 dataset     = TrainIterableDataset(dataset=self.dataset, sample_idx=np.where(self.is_labeled==True)[0]),
                 batch_size  = self.batch_size,
                 num_workers = self.num_workers,
-                pin_memory  = True
             )
         elif self.trainloader_type == 'epoch':             
             dataloader = DataLoader(
@@ -150,7 +149,6 @@ class Strategy:
                 batch_size  = self.batch_size,
                 sampler     = self.select_sampler(indices=np.where(self.is_labeled==True)[0]),
                 num_workers = self.num_workers,
-                pin_memory  = True
             )
         
         return dataloader

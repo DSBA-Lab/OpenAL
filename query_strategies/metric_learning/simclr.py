@@ -56,7 +56,6 @@ class SimCLRCSI(MetricLearning):
             sampler     = SubsetRandomSampler(indices=sample_idx), 
             batch_size  = self.batch_size, 
             num_workers = self.num_workers,
-            pin_memory  = True
         )
         
         # set attributions for trainloader and testset
