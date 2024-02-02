@@ -8,8 +8,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from query_strategies.metric_learning import create_metric_learning
-from query_strategies.metric_learning import MetricModel
+from query_strategies.metric_learning import create_metric_learning, MetricModel
 from query_strategies.learning_loss import LearningLoss
 from query_strategies.scheds import create_scheduler
 from query_strategies.optims import create_optimizer
@@ -69,7 +68,6 @@ class MQNet(Strategy):
         self.csi = create_metric_learning(
             method_name      = 'SimCLRCSI',
             vis_encoder      = vis_encoder,
-            num_id_class     = self.num_id_class,
             dataname         = self.dataset.dataname,
             img_size         = self.dataset.img_size,
             sim_lambda       = metric_params['sim_lambda'],

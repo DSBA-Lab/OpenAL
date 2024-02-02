@@ -7,7 +7,6 @@ import torch
 from torch.utils.data import DataLoader
 
 from query_strategies.metric_learning import create_metric_learning, MetricModel
-from query_strategies.metric_learning import MetricModel
 from .factory import create_query_strategy
 from .strategy import Strategy
 from .sampler import SubsetSequentialSampler
