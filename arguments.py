@@ -36,7 +36,14 @@ def parser():
     cfg = OmegaConf.merge(cfg, args)
     
     # Update experiment name
-    cfg.DEFAULT.exp_name = cfg.AL.strategy if 'AL' in cfg.keys() else 'Full'
+    if 'AL' in cfg.keys():
+        if cfg.AL.strategy in ['CLIPNAL', 'MQNet']:
+            cfg.DEFAULT.exp_name = f'{cfg.AL.strategy}-{cfg.AL.openset_params.selected_strategy}'
+        else:
+            cfg.DEFAULT.exp_name = f'{cfg.AL.strategy}'
+    else:
+        cfg.DEFAULT.exp_name = 'Full'
+    
     if 'exp_name' in args.DEFAULT.keys():
         cfg.DEFAULT.exp_name = f'{cfg.DEFAULT.exp_name}-{args.DEFAULT.exp_name}'
        
