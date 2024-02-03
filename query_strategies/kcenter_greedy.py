@@ -106,10 +106,9 @@ class KCenterGreedyCB(KCenterGreedy):
         
         super(KCenterGreedyCB, self).__init__(**init_params)
         
-    def query(self, model, unlabeled_idx: np.ndarray = None) -> np.ndarray:
+    def query(self, model, **kwargs) -> np.ndarray:
         # unlabeled index
-        if unlabeled_idx == None:
-            unlabeled_idx = self.get_unlabeled_idx()
+        unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         # predict probability and embedding on unlabeled dataset
         ulb_outputs = self.extract_outputs(
@@ -139,18 +138,21 @@ class KCenterGreedyCB(KCenterGreedy):
 
         # greedy selection
         selected_idx = self.class_balanced_greedy_selection(
-            mat       = mat, 
-            ulb_embed = ulb_embed, 
-            ulb_probs = ulb_probs, 
-            lb_labels = lb_labels,
-            r         = self.r,
-            lamb      = self.lamb
+            mat           = mat, 
+            ulb_embed     = ulb_embed, 
+            ulb_probs     = ulb_probs, 
+            lb_labels     = lb_labels,
+            r             = self.r,
+            lamb          = self.lamb,
+            unlabeled_idx = unlabeled_idx
         )
         
         return selected_idx
     
     
-    def class_balanced_greedy_selection(self, mat: torch.Tensor, ulb_embed: torch.Tensor, ulb_probs: torch.Tensor, lb_labels: torch.Tensor, r: int, lamb: int):
+    def class_balanced_greedy_selection(
+        self, mat: torch.Tensor, unlabeled_idx: np.ndarray, ulb_embed: torch.Tensor, ulb_probs: torch.Tensor, lb_labels: torch.Tensor, r: int, lamb: int):
+        
         # Class-balance K-center greedy
         
         selected_idx = []
@@ -194,7 +196,7 @@ class KCenterGreedyCB(KCenterGreedy):
             q_idx_ = (-mat_min + (lamb / num_classes) * l1_loss).argmin().item()
             
             # find index from unlabeled pool
-            q_idx = np.arange(len(self.is_labeled))[is_labeled==False][q_idx_]
+            q_idx = np.arange(len(self.is_labeled))[unlabeled_idx][q_idx_]
         
             # change selected index into unlabeled pool
             z_idx = np.arange(z.size(0))[z==False][q_idx_]
