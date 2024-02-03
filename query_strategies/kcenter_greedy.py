@@ -37,12 +37,12 @@ class KCenterGreedy(Strategy):
         mat = self._distance(embed1=ulb_embed, embed2=lb_embed)
 
         # greedy selection
-        selected_idx = self.greedy_selection(mat=mat, ulb_embed=ulb_embed)
+        selected_idx = self.greedy_selection(mat=mat, ulb_embed=ulb_embed, unlabeled_idx=unlabeled_idx)
         
         return selected_idx
 
 
-    def greedy_selection(self, mat: torch.Tensor, ulb_embed: torch.Tensor):
+    def greedy_selection(self, mat: torch.Tensor, ulb_embed: torch.Tensor, unlabeled_idx: np.ndarray):
         # K-center greedy
         selected_idx = []
         is_labeled = deepcopy(self.is_labeled)
@@ -57,7 +57,7 @@ class KCenterGreedy(Strategy):
             q_idx_ = mat_min.argmax().item()
             
             # find index from unlabeled pool
-            q_idx = np.arange(len(self.is_labeled))[is_labeled==False][q_idx_]
+            q_idx = np.arange(len(self.is_labeled))[unlabeled_idx][q_idx_]
             
             # change selected index into labeled pool
             is_labeled[q_idx] = True
