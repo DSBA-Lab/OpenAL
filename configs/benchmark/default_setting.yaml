@@ -34,7 +34,7 @@ TRAIN:
 LOSS:
   name: CrossEntropyLoss
 MODEL:
-  name: vit_small_patch8_224
+  name: resnet18
   pretrained: false
 AL:
   n_start: 100
