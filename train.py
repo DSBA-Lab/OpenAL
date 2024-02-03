@@ -826,6 +826,13 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
     )
     assert sum(id_targets == id_targets_check) == cfg.AL.nb_id_class, "ID targets are not matched"
     
+    # save selected ID targets
+    json.dump(
+        obj    = {'target_ids': list(map(int, id_targets))},
+        fp     = open(os.path.join(savedir, 'target_ids.json'), 'w'), 
+        indent = '\t'
+    )
+    
     # inital sampling labeling
     is_labeled, is_unlabeled, is_ood = create_is_labeled_unlabeled(
         trainset   = trainset,
@@ -887,9 +894,12 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
     )
     
     # query log dataframe
-    query_log_df = pd.DataFrame({'idx': range(len(is_labeled))})
+    query_log_df = pd.DataFrame({'idx': range(len(is_labeled)), 'is_unlabel': np.zeros(len(is_labeled), dtype=bool)})
+    query_log_df.loc[is_unlabeled, 'is_unlabel'] = True
     query_log_df['query_round'] = None
-    query_log_df.loc[is_labeled, 'query_round'] = 'round0'
+    query_log_df['ID_query_round'] = None
+    query_log_df.loc[np.r_[np.where(is_labeled==True)[0], np.where(is_ood==True)[0]], 'query_round'] = 'round0'
+    query_log_df.loc[is_labeled, 'ID_query_round'] = 'round0'
     
     # number of labeled set log dataframe
     nb_labeled_df = pd.DataFrame({'round': range(nb_round+1), 'nb_labeled': [0]*(nb_round+1)})
@@ -918,7 +928,8 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             trainloader = strategy.get_trainloader()
             
             # save query index
-            query_log_df.loc[id_query_idx, 'query_round'] = f'round{r}'
+            query_log_df.loc[query_idx, 'query_round'] = f'round{r}'
+            query_log_df.loc[id_query_idx, 'ID_query_round'] = f'round{r}'
             query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
             
             # save nb_labeled
