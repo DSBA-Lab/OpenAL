@@ -10,8 +10,19 @@ from query_strategies.utils import torch_seed
 
 
 def create_metric_learning(
-    method_name, vis_encoder, epochs: int, opt_name: str, lr: float, sched_name: str, sched_params: dict, warmup_params: dict = {},
-    seed: int = 223, opt_params: dict = {}, **kwargs):
+    method_name, 
+    vis_encoder, 
+    epochs: int, 
+    opt_name: str, 
+    lr: float, 
+    sched_name: str, 
+    sched_params: dict, 
+    warmup_params: dict = {},
+    seed: int = 223, 
+    opt_params: dict = {}, 
+    accelerator = None,
+    **kwargs
+):
     
     metric_learning = __import__('query_strategies.metric_learning', fromlist='metric_learning').__dict__[method_name](
         vis_encoder     = vis_encoder, 
@@ -23,6 +34,7 @@ def create_metric_learning(
         sched_name      = sched_name,
         sched_params    = sched_params,
         warmup_params   = warmup_params,
+        accelerator     = accelerator,
         **kwargs
     )
     
@@ -42,8 +54,10 @@ class MetricLearning:
         opt_params: dict = {}, 
         savepath: str = None, 
         seed: int = 223, 
+        accelerator = None,
         **kwargs
     ):
+        self.accelerator = accelerator
         
         self.vis_encoder = vis_encoder
         self.epochs = epochs
@@ -69,7 +83,10 @@ class MetricLearning:
             vis_encoder.load_state_dict(torch.load(self.savepath))
             print('load metric model from {}'.format(self.savepath))
             
-        vis_encoder.to(device)
+        if self.accelerator != None:
+            vis_encoder = self.accelerator.prepare(vis_encoder)
+        else:
+            vis_encoder.to(device)
         vis_encoder.eval()
             
         return vis_encoder
