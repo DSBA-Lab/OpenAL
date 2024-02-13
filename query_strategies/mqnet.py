@@ -24,6 +24,7 @@ class MQNet(Strategy):
         selected_strategy: str, 
         meta_params: dict = {}, 
         metric_params: dict = {}, 
+        accelerator = None,
         **init_args
     ):
         
@@ -55,6 +56,7 @@ class MQNet(Strategy):
             sched_name      = meta_params['sched_name'],
             sched_params    = meta_params['sched_params'],
             warmup_params   = meta_params.get('warmup_params', {}),
+            accelerator     = accelerator,
             seed            = seed, 
         )
                 
@@ -82,6 +84,7 @@ class MQNet(Strategy):
             sched_params     = metric_params['sched_params'],
             warmup_params    = metric_params.get('warmup_params', {}),
             savepath         = os.path.join(savedir, 'metric_model.pt'), 
+            accelerator      = accelerator,
             seed             = seed, 
         )
         
@@ -252,8 +255,11 @@ class MetaLearning:
         sched_name: str = 'multi_step',
         sched_params: dict = {},
         warmup_params: dict = {},
+        accelerator = None,
         **kwargs
     ):
+        
+        self.accelerator = accelerator
         
         self.mqnet = QueryNet(inter_dim=dim)
         self.num_id_class = num_id_class
@@ -291,8 +297,13 @@ class MetaLearning:
         if load_model:
             mqnet.load_state_dict(torch.load(os.path.join(self.savedir, f'meta_model{self.current_round}.pt')))
             mqnet.eval()
+        
+        if self.accelerator != None:
+            mqnet = self.accelerator.prepare(mqnet)
+        else:
+            mqnet.to(device)
             
-        return mqnet.to(device)
+        return mqnet
 
         
     def fit(self, model, mqnet, X: torch.FloatTensor, X_meta: torch.FloatTensor, y: torch.LongTensor, transform, device: str, **kwargs):
@@ -338,6 +349,9 @@ class MetaLearning:
         dataset = MetaDataset(X=X, X_meta=X_meta, y=y, transform=transform)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
         
+        if self.accelerator != None:
+            dataloader = self.accelerator.prepare(dataloader)
+        
         setattr(self, 'trainloader', dataloader)
     
     def train(self, model, mqnet, optimizer, device: str):
@@ -352,8 +366,9 @@ class MetaLearning:
         
         while batch_idx < self.steps_per_epoch:
             for idx, (inputs, inputs_meta, targets) in enumerate(self.trainloader):   
-                inputs, inputs_meta, targets = inputs.to(device), inputs_meta.to(device), targets.to(device)
-                
+                if self.accelerator == None:
+                    inputs, inputs_meta, targets = inputs.to(device), inputs_meta.to(device), targets.to(device)
+
                 is_id = targets.le(self.num_id_class-1).type(torch.LongTensor).to(device)
 
                 # get pred_scores through MQNet

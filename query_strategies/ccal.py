@@ -20,6 +20,7 @@ class CCAL(Strategy):
         savedir: str, 
         semantic_params: dict = {}, 
         distinctive_params: dict = {}, 
+        accelerator = None,
         **init_args
     ):
         
@@ -52,6 +53,7 @@ class CCAL(Strategy):
             sched_params     = distinctive_params['sched_params'],
             warmup_params    = distinctive_params.get('warmup_params', {}),
             savepath         = os.path.join(savedir, 'distinctive_model.pt'), 
+            accelerator      = accelerator,
             seed             = seed, 
         )
         
@@ -77,6 +79,7 @@ class CCAL(Strategy):
             sched_params     = semantic_params['sched_params'],
             warmup_params    = semantic_params.get('warmup_params', {}),
             savepath         = os.path.join(savedir, 'semantic_model.pt'), 
+            accelerator      = accelerator,
             seed             = seed, 
         )
         

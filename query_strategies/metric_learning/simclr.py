@@ -43,10 +43,6 @@ class SimCLRCSI(MetricLearning):
         
         self.dataname = dataname
         
-        # simclr_aug
-        aug_info = ['ColorJitter', 'RandomGrayscale', 'RandomResizedCrop']
-        aug_info = aug_info[:-1] if dataname == 'imagenet' else aug_info
-        
         self.simclr_aug = get_simclr_augmentation(img_size=img_size, dataname=dataname)
         
         # hflip
@@ -55,7 +51,6 @@ class SimCLRCSI(MetricLearning):
     def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
         # set trainset        
         trainset = deepcopy(dataset)
-        trainset.transform = self.create_transform(img_size=dataset.img_size, **dataset.stats)
         trainloader = DataLoader(
             trainset, 
             sampler     = SubsetRandomSampler(indices=sample_idx),
@@ -63,18 +58,11 @@ class SimCLRCSI(MetricLearning):
             num_workers = self.num_workers,
         )
         
+        if self.accelerator != None:
+            trainloader = self.accelerator.prepare(trainloader)
+        
         # set attributions for trainloader and testset
         setattr(self, 'trainloader', trainloader)
-        
-    def create_transform(self, img_size, mean: tuple, std: tuple):
-        transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=img_size, padding=4),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-        
-        return transform
             
     def train(self, epoch, vis_encoder, optimizer, scheduler, device: str, **kwargs):
         total_sim_loss = 0
@@ -83,23 +71,26 @@ class SimCLRCSI(MetricLearning):
         desc = '[TRAIN] LR: {lr:.3e} Sim Loss: {sim_loss:>6.4f} Shift Loss: {shift_loss:>6.4f}'
         p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], sim_loss=0, shift_loss=0), leave=False)
         
-        self.hflip.to(device)
-        self.simclr_aug.to(device)
+        
+        if self.accelerator != None:
+            self.hflip, self.simclr_aug = self.accelerator.prepare(self.hflip, self.simclr_aug)
+        else:
+            self.hflip.to(device)
+            self.simclr_aug.to(device)
         
         vis_encoder.train()
         
         for idx, (images, targets) in enumerate(p_bar):          
             # augment images
-            if self.dataname != 'imagenet':
+            if self.accelerator == None:
                 images = images.to(device)
-                images1, images2 = self.hflip(images.repeat(2, 1, 1, 1)).chunk(2)  # hflip
-            else:
-                images1, images2 = images[0].to(device), images[1].to(device)
+            images1, images2 = self.hflip(images.repeat(2, 1, 1, 1)).chunk(2)  # hflip
+        
             
             images1 = torch.cat([self.shift_transform(images1, k) for k in range(self.k_shift)])
             images2 = torch.cat([self.shift_transform(images2, k) for k in range(self.k_shift)])
             shift_labels = torch.cat([torch.ones_like(targets) * k for k in range(self.k_shift)], 0)  # B -> 4B
-            shift_labels = shift_labels.repeat(2).to(device)
+            shift_labels = shift_labels.repeat(2)
             
             images_pair = torch.cat([images1, images2], dim=0)
             images_pair = self.simclr_aug(images_pair)  # simclr augment
@@ -168,7 +159,6 @@ class SimCLR(MetricLearning):
         
         # set trainset        
         trainset = deepcopy(dataset)
-        trainset.transform = self.create_transform(img_size=dataset.img_size, **dataset.stats)
         trainloader = DataLoader(
             trainset, 
             sampler     = SubsetRandomSampler(indices=sample_idx),
@@ -176,20 +166,12 @@ class SimCLR(MetricLearning):
             num_workers = self.num_workers,
         )
         
+        if self.accelerator != None:
+            trainloader = self.accelerator.prepare(trainloader)
+        
         # set attributions for trainloader and testset
         setattr(self, 'trainloader', trainloader)
         
-        
-    def create_transform(self, img_size, mean: tuple, std: tuple):
-        transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=img_size, padding=4),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
-        
-        return transform
-            
             
     def train(self, epoch, vis_encoder, optimizer, scheduler, device: str, **kwargs):
         total_loss = 0
@@ -197,20 +179,21 @@ class SimCLR(MetricLearning):
         desc = '[TRAIN] LR: {lr:.3e} Loss: {loss:>6.4f}'
         p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], loss=total_loss), leave=False)
         
-        self.hflip.to(device)
-        self.simclr_aug.to(device)
-        
+        if self.accelerator != None:
+            self.hflip, self.simclr_aug = self.accelerator.prepare(self.hflip, self.simclr_aug)
+        else:
+            self.hflip.to(device)
+            self.simclr_aug.to(device)
+
         vis_encoder.train()
         
         for idx, (images, targets) in enumerate(p_bar):          
             # augment images
-            if self.dataname != 'imagenet':
+            if self.accelerator == None:
                 images = images.to(device)
-                images_pair = self.hflip(images.repeat(2, 1, 1, 1))  # 2B with hflip
-            else:
-                images1, images2 = images[0].to(device), images[1].to(device)
-                images_pair = torch.cat([images1, images2], dim=0)  # 2B
-            
+
+            images_pair = self.hflip(images.repeat(2, 1, 1, 1))  # 2B with hflip
+
             images_pair = self.simclr_aug(images_pair)  # simclr augment
             outputs = vis_encoder(images_pair)
             
