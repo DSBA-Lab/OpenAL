@@ -2,7 +2,7 @@ from timm import create_model as _create_model
 import torch.nn as nn
 
 def create_model(
-    modelname: str, num_classes: int = 0, pretrained: bool = False, **params):
+    modelname: str, num_classes: int = 0, pretrained: bool = False, img_size: int = 32, **params):
     
     query_model = None
     
@@ -35,7 +35,7 @@ def create_model(
             **params
         )
     
-        if not pretrained:
+        if not pretrained or img_size < 224:
             if 'conv1' in model._modules.keys():
                 model.conv1 = nn.Conv2d(3, model.conv1.out_channels, kernel_size=3, padding=1, stride=1, bias=False)
             elif 'stem' in model._modules.keys():

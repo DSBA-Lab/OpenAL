@@ -416,6 +416,7 @@ def full_run(
         modelname   = cfg.MODEL.name, 
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained,
+        img_size    = cfg.DATASET.img_size,
         **cfg.MODEL.get('params',{})
     )
     
@@ -546,6 +547,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         modelname   = cfg.MODEL.name,
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained, 
+        img_size    = cfg.DATASET.img_size,
         **cfg.MODEL.get('params',{})
     )
     
@@ -842,6 +844,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         modelname   = cfg.MODEL.name,
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained, 
+        img_size    = cfg.DATASET.img_size,
         **cfg.MODEL.get('params',{})
     )
 
