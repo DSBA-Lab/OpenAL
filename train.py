@@ -549,12 +549,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         **cfg.MODEL.get('params',{})
     )
     
-    # select strategy    
-    trainloader_type = 'epoch'
-    if cfg.TRAIN.get('params'):
-        if cfg.TRAIN.params.get('steps_per_epoch'):
-            trainloader_type = 'step'
-            
+    # select strategy                
     strategy = create_query_strategy(
         strategy_name    = cfg.AL.strategy, 
         model            = model,
@@ -566,7 +561,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         n_subset         = cfg.AL.n_subset,
         batch_size       = cfg.DATASET.batch_size, 
         num_workers      = cfg.DATASET.num_workers,
-        trainloader_type = trainloader_type,
+        steps_per_epoch  = cfg.TRAIN.params.get('steps_per_epoch', 0),
         tta_agg          = cfg.AL.get('tta_agg', None),
         tta_params       = cfg.AL.get('tta_params', None),
         interval_type    = cfg.AL.get('interval_type', 'top'),
@@ -852,20 +847,16 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
 
     # select strategy    
     openset_params = {
-        'is_openset'   : True,
-        'is_unlabeled' : is_unlabeled,
-        'is_ood'       : is_ood,
-        'id_classes'   : trainset.classes[id_targets],
-        'savedir'      : savedir,
-        'seed'         : cfg.DEFAULT.seed
+        'is_openset'      : True,
+        'is_unlabeled'    : is_unlabeled,
+        'is_ood'          : is_ood,
+        'id_classes'      : trainset.classes[id_targets],
+        'savedir'         : savedir,
+        'seed'            : cfg.DEFAULT.seed,
+        'accelerator'     : accelerator
     }
     openset_params.update(cfg.AL.get('openset_params', {}))
     openset_params.update(cfg.AL.get('params', {}))
-    
-    trainloader_type = 'epoch'
-    if cfg.TRAIN.get('params'):
-        if cfg.TRAIN.params.get('steps_per_epoch'):
-            trainloader_type = 'step'
     
     strategy = create_query_strategy(
         strategy_name    = cfg.AL.strategy, 
@@ -878,7 +869,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         n_subset         = cfg.AL.n_subset,
         batch_size       = cfg.DATASET.batch_size, 
         num_workers      = cfg.DATASET.num_workers,
-        trainloader_type = trainloader_type,
+        steps_per_epoch  = cfg.TRAIN.params.get('steps_per_epoch', 0),
         **openset_params
     )
     

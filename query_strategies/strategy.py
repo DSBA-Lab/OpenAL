@@ -25,7 +25,7 @@ class Strategy:
             batch_size: int, 
             num_workers: int, 
             sampler_name: str, 
-            trainloader_type: str = 'epoch',
+            steps_per_epoch: int = 0,
             n_subset: int = 0, 
             is_openset: bool = False,
             is_unlabeled: np.ndarray = None, 
@@ -68,7 +68,7 @@ class Strategy:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.sampler_name = sampler_name
-        self.trainloader_type = trainloader_type
+        self.steps_per_epoch = steps_per_epoch
         
         # test time augmentation
         self.tta = None
@@ -137,13 +137,13 @@ class Strategy:
         
     def get_trainloader(self) -> DataLoader:
         
-        if self.trainloader_type == 'step':
+        if self.steps_per_epoch > 0:
             dataloader = DataLoader(
                 dataset     = TrainIterableDataset(dataset=deepcopy(self.dataset), sample_idx=np.where(self.is_labeled==True)[0]),
                 batch_size  = self.batch_size,
                 num_workers = self.num_workers,
             )
-        elif self.trainloader_type == 'epoch':             
+        elif self.steps_per_epoch == 0:
             dataloader = DataLoader(
                 dataset     = self.dataset,
                 batch_size  = self.batch_size,
