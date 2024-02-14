@@ -38,6 +38,10 @@ def create_id_ood_targets(dataset, nb_id_class: int, seed: int):
             
     dataset.targets = np.array(new_targets)
     
+    # for ImageFolder class
+    if dataset.__class__.__name__ == 'ImageNet':
+        dataset.samples = [(s[0], t) for s, t in zip(dataset.samples, dataset.targets)]
+    
     return dataset, id_targets
 
 
