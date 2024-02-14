@@ -4,6 +4,7 @@ import os
 import numpy as np
 import re
 import json
+from PIL import Image
 from _ctypes import PyObj_FromPtr  # see https://stackoverflow.com/a/15012814/355230
 from torch.utils.data import IterableDataset
 
@@ -92,6 +93,9 @@ class TrainIterableDataset(IterableDataset):
         while True:
             idx = np.random.choice(a=self.sample_idx, size=1, replace=False)[0]
             img, target = self.data[idx], self.targets[idx]
+            
+            if isinstance(img, str):
+                img = Image.open(img)
             img = self.transform(img)
         
             yield img, target

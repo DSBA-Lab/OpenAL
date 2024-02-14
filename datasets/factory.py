@@ -152,12 +152,14 @@ def load_imagenet1k(datadir: str, img_size: int, mean: tuple, std: tuple, aug_in
         split     = 'train',
         transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
     )
+    trainset.data = [d[0] for d in trainset.imgs]
     
     testset = datasets.ImageNet(
         root      = root,
         split     = 'val',
         transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info_test)
     )
+    testset.data = [d[0] for d in testset.imgs]
 
     return trainset, testset
     
