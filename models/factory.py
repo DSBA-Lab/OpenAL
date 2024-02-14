@@ -35,7 +35,7 @@ def create_model(
             **params
         )
     
-        if not pretrained or img_size < 224:
+        if not pretrained and img_size < 224:
             if 'conv1' in model._modules.keys():
                 model.conv1 = nn.Conv2d(3, model.conv1.out_channels, kernel_size=3, padding=1, stride=1, bias=False)
             elif 'stem' in model._modules.keys():
