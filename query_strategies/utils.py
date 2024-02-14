@@ -95,7 +95,7 @@ class TrainIterableDataset(IterableDataset):
             img, target = self.data[idx], self.targets[idx]
             
             if isinstance(img, str):
-                img = Image.open(img)
+                img = Image.open(img).convert('RGB')
             img = self.transform(img)
         
             yield img, target
