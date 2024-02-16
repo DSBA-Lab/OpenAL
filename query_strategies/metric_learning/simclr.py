@@ -86,7 +86,6 @@ class SimCLRCSI(MetricLearning):
                 images = images.to(device)
             images1, images2 = self.hflip(images.repeat(2, 1, 1, 1)).chunk(2)  # hflip
         
-            
             images1 = torch.cat([self.shift_transform(images1, k) for k in range(self.k_shift)])
             images2 = torch.cat([self.shift_transform(images2, k) for k in range(self.k_shift)])
             shift_labels = torch.cat([torch.ones_like(targets) * k for k in range(self.k_shift)], 0)  # B -> 4B
@@ -106,10 +105,14 @@ class SimCLRCSI(MetricLearning):
             
             total_sim_loss += loss_sim.item()
             total_shift_loss += loss_shift.item()
-
-            optimizer.zero_grad()
-            loss.backward()
+            
+            if self.accelerator != None:
+                self.accelerator.backward(loss)
+            else:
+                loss.backward()
+            
             optimizer.step()
+            optimizer.zero_grad()
             
             scheduler.step(epoch - 1 + idx / len(self.trainloader))
             
@@ -203,9 +206,12 @@ class SimCLR(MetricLearning):
             loss = nt_xent_loss(features, temperature=self.temperature)
             total_loss += loss.item()
 
-            optimizer.zero_grad()
-            loss.backward()
+            if self.accelerator != None:
+                self.accelerator.backward(loss)
+            else:
+                loss.backward()
             optimizer.step()
+            optimizer.zero_grad()
             
             scheduler.step(epoch - 1 + idx / len(self.trainloader))
             
