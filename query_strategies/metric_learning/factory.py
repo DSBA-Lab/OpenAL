@@ -104,10 +104,12 @@ class MetricLearning:
         scheduler = create_scheduler(
             sched_name    = self.sched_name, 
             optimizer     = optimizer,
-            epochs        = self.epochs, 
+            epochs        = self.epochs,
             params        = self.sched_params,
             warmup_params = self.warmup_params
         )
+        
+        optimizer, scheduler = self.accelerator.prepare(optimizer, scheduler)
                 
         desc = '[{name}] lr: {lr:.3e}'
         p_bar = tqdm(range(self.epochs), total=self.epochs)
