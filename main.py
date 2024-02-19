@@ -1,6 +1,7 @@
 import os
 import wandb
 import logging
+import sys
 
 from accelerate import Accelerator
 from omegaconf import OmegaConf
@@ -98,6 +99,8 @@ def run(cfg):
     
 
 if __name__=='__main__':
+    # MQNet trainin
+    sys.setrecursionlimit(10000)
 
     # config
     cfg = parser()
