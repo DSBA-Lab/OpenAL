@@ -68,8 +68,12 @@ class SimCLRCSI(MetricLearning):
         total_sim_loss = 0
         total_shift_loss = 0
         
-        desc = '[TRAIN] LR: {lr:.3e} Sim Loss: {sim_loss:>6.4f} Shift Loss: {shift_loss:>6.4f}'
-        p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], sim_loss=0, shift_loss=0), leave=False)
+        desc = '[TRAIN] LR: {lr:.3e} Sim Loss(mean): {sim_loss:>6.4f}({sim_loss_mean:>6.4f}) Shift Loss(mean): {shift_loss:>6.4f}({shift_loss_mean:>6.4f})'
+        p_bar = tqdm(
+            self.trainloader, 
+            desc=desc.format(lr=optimizer.param_groups[0]['lr'], sim_loss=0, sim_loss_mean=0, shift_loss=0, shift_loss_mean=0), 
+            leave=False
+        )
         
         
         if self.accelerator != None:
@@ -118,9 +122,11 @@ class SimCLRCSI(MetricLearning):
             
             p_bar.set_description(
                 desc=desc.format(
-                    lr         = optimizer.param_groups[0]['lr'], 
-                    sim_loss   = total_sim_loss/(idx+1), 
-                    shift_loss = total_shift_loss/(idx+1)
+                    lr              = optimizer.param_groups[0]['lr'], 
+                    sim_loss        = loss_sim.item(),
+                    sim_loss_mean   = total_sim_loss/(idx+1),
+                    shift_loss      = loss_shift.item(),
+                    shift_loss_mean = total_shift_loss/(idx+1)
                 )
             )
             
