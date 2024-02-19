@@ -4,6 +4,7 @@ from copy import deepcopy
 from tqdm.auto import tqdm
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from query_strategies.metric_learning import create_metric_learning, MetricModel
@@ -305,5 +306,6 @@ class CCAL(Strategy):
                 
         features = torch.cat(features, dim=0) # ( N x k_shift x d ) N is the number of sample index
         features = features.permute(1,0,2) # ( k_shift x N x d )
+        features = F.normalize(features, dim=2)
         
         return features
