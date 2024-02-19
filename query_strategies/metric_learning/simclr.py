@@ -206,6 +206,7 @@ class SimCLR(MetricLearning):
 
             images_pair = self.simclr_aug(images_pair)  # simclr augment
             outputs = vis_encoder(images_pair)
+            outputs['simclr'] = F.normalize(outputs['simclr'], dim=1)
             
             features = torch.matmul(outputs['simclr'], outputs['simclr'].t())
             
