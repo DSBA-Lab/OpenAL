@@ -28,7 +28,7 @@ class MetricModel(nn.Module):
         outputs = {}
         
         features = self.model(x)
-        outputs['simclr'] = F.normalize(self.simclr_layer(features), dim=1)
+        outputs['simclr'] = self.simclr_layer(features)
 
         if shift:
             outputs['shift'] = self.shift_cls_layer(features)
