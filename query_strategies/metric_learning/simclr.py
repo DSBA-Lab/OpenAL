@@ -7,7 +7,7 @@ code reference
 import numpy as np
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
+import torch.nn.functional as F
 
 from copy import deepcopy
 from tqdm.auto import tqdm
@@ -98,6 +98,7 @@ class SimCLRCSI(MetricLearning):
             images_pair = torch.cat([images1, images2], dim=0)
             images_pair = self.simclr_aug(images_pair)  # simclr augment
             outputs = vis_encoder(images_pair, shift=True)
+            outputs['simclr'] = F.normalize(outputs['simclr'], dim=1)
             
             features = torch.matmul(outputs['simclr'], outputs['simclr'].t())
             
