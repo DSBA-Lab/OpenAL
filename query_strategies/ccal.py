@@ -108,7 +108,6 @@ class CCAL(Strategy):
                 dataset     = self.dataset,
                 sample_idx  = total_idx,
                 device      = device,
-                img_size    = self.dataset.img_size
             )
             
         semantic_encoder = self.semantic_cl.init_model(device=device)
@@ -118,7 +117,6 @@ class CCAL(Strategy):
                 dataset     = self.dataset,
                 sample_idx  = total_idx,
                 device      = device,
-                img_size    = self.dataset.img_size
             )
         
         # get labeled and unlabeled normalized features using distinctive representation model
@@ -196,7 +194,7 @@ class CCAL(Strategy):
         sim_sort, sim_rank_idx = sim.sort(descending=True, dim=2)
 
         # difference in cosine similarity between first and second for unlabeled samples
-        sim_diff_st_nd = sim_sort.select(dim=2, index=0) - sim_sort.select(dim=2, index=0)
+        sim_diff_st_nd = sim_sort.select(dim=2, index=0) - sim_sort.select(dim=2, index=1)
         
         # cosine similarity between first and second
         lb_st_idx = sim_rank_idx.select(dim=2, index=0).unsqueeze(2).repeat(1, 1, lb_features.size(2))
@@ -206,7 +204,6 @@ class CCAL(Strategy):
         lb_nd_embed = torch.gather(lb_features, dim=1, index=lb_nd_idx)
         
         sim_st_nd = torch.einsum('tid, tid -> ti', lb_st_embed, lb_nd_embed)
-        sim_st_nd
         
         # distinctive scores
         sim = (sim_diff_st_nd + sim_st_nd).mean(dim=0) # average for transform axis
