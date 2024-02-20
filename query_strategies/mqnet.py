@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from PIL import Image
 from copy import deepcopy
 from tqdm.auto import tqdm
 from glob import glob
@@ -414,7 +415,12 @@ class MetaDataset(Dataset):
         return len(self.X)
     
     def __getitem__(self, i):
-        x_i = self.transform(self.X[i])
+        img = self.X[i]
+        
+        if isinstance(img, str):
+            img = Image.open(img).convert('RGB')
+            
+        x_i = self.transform(img)
         x_meta_i = self.X_meta[i]
         y_i = self.y[i]
         
