@@ -395,7 +395,7 @@ class MetaLearning:
                 batch_idx += 1
                     
                 p_bar.update(1)
-                p_bar.set_description(desc=desc.format(loss=total_loss/(idx+1)))
+                p_bar.set_description(desc=desc.format(loss=total_loss/(batch_idx)))
                 
                 if batch_idx == self.steps_per_epoch:
                     break
