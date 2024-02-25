@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from .factory import MetricLearning
 from .losses import nt_xent_loss
 from .transform_layers import get_simclr_augmentation, HorizontalFlipLayer, Rotation, CutPerm
-
+from datasets import create_augmentation
 
 class SimCLRCSI(MetricLearning):
     def __init__(
@@ -27,6 +27,7 @@ class SimCLRCSI(MetricLearning):
         num_workers: int, 
         shift_trans_type: str = 'rotation', 
         sim_lambda: float = 1.0, 
+        aug_info: dict = None,
         **init_params
     ):
         super(SimCLRCSI, self).__init__(**init_params)
@@ -42,6 +43,7 @@ class SimCLRCSI(MetricLearning):
         self.get_shift_module(shift_trans_type=shift_trans_type)
         
         self.dataname = dataname
+        self.aug_info = aug_info
         
         self.simclr_aug = get_simclr_augmentation(img_size=img_size, dataname=dataname)
         
@@ -51,6 +53,13 @@ class SimCLRCSI(MetricLearning):
     def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
         # set trainset        
         trainset = deepcopy(dataset)
+        trainset.transform = create_augmentation(
+            img_size = trainset.img_size,
+            mean     = trainset.stats['mean'],
+            std      = trainset.stats['std'],
+            aug_info = self.aug_info
+        )
+        
         trainloader = DataLoader(
             trainset, 
             sampler     = SubsetRandomSampler(indices=sample_idx),
@@ -95,7 +104,7 @@ class SimCLRCSI(MetricLearning):
             shift_labels = torch.cat([torch.ones_like(targets) * k for k in range(self.k_shift)], 0)  # B -> 4B
             shift_labels = shift_labels.repeat(2)
             
-            images_pair = torch.cat([images1, images2], dim=0)
+            images_pair = torch.cat([images1, images2], dim=0) # 8B
             images_pair = self.simclr_aug(images_pair)  # simclr augment
             outputs = vis_encoder(images_pair, shift=True)
             outputs['simclr'] = F.normalize(outputs['simclr'], dim=1)
@@ -150,7 +159,7 @@ class SimCLRCSI(MetricLearning):
             
     
 class SimCLR(MetricLearning):
-    def __init__(self, dataname: str, img_size: int, batch_size: int, num_workers: int, **init_params):
+    def __init__(self, dataname: str, img_size: int, batch_size: int, num_workers: int, aug_info: dict = None, **init_params):
         super(SimCLR, self).__init__(**init_params)
         
         self.batch_size = batch_size
@@ -158,6 +167,7 @@ class SimCLR(MetricLearning):
         self.temperature = 0.5
         
         self.dataname = dataname
+        self.aug_info = aug_info
         
         # simclr_aug
         self.simclr_aug = get_simclr_augmentation(img_size=img_size, dataname=dataname)
@@ -169,6 +179,13 @@ class SimCLR(MetricLearning):
         
         # set trainset        
         trainset = deepcopy(dataset)
+        trainset.transform = create_augmentation(
+            img_size = trainset.img_size,
+            mean     = trainset.stats['mean'],
+            std      = trainset.stats['std'],
+            aug_info = self.aug_info
+        )
+        
         trainloader = DataLoader(
             trainset, 
             sampler     = SubsetRandomSampler(indices=sample_idx),

@@ -52,6 +52,7 @@ class MetricLearning:
         sched_params: dict,
         warmup_params: dict = {},
         opt_params: dict = {}, 
+        aug_info: dict = None,
         savepath: str = None, 
         seed: int = 223, 
         accelerator = None,

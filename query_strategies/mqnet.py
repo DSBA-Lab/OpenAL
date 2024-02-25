@@ -84,6 +84,7 @@ class MQNet(Strategy):
             sched_name       = metric_params['sched_name'],
             sched_params     = metric_params['sched_params'],
             warmup_params    = metric_params.get('warmup_params', {}),
+            aug_info         = metric_params.get('aug_info', None),
             savepath         = os.path.join(savedir, 'metric_model.pt'), 
             accelerator      = accelerator,
             seed             = seed, 
@@ -143,7 +144,7 @@ class MQNet(Strategy):
             X         = self.dataset.data[select_idx],
             X_meta    = inputs,
             y         = targets[select_idx],
-            transform = self.test_transform,
+            transform = self.dataset.transform,
             device    = device
         )
         
@@ -389,13 +390,17 @@ class MetaLearning:
                 total_loss += loss.item()
                 
                 optimizer.zero_grad()
-                loss.backward()            
+                if self.accelerator != None:
+                    self.accelerator.backward(loss)
+                else:
+                    loss.backward()
+                
                 optimizer.step()
                 
                 batch_idx += 1
                     
                 p_bar.update(1)
-                p_bar.set_description(desc=desc.format(loss=total_loss/(batch_idx)))
+                p_bar.set_description(desc=desc.format(loss=total_loss/batch_idx))
                 
                 if batch_idx == self.steps_per_epoch:
                     break
