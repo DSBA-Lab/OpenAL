@@ -27,10 +27,6 @@ AL:
         use: True
         multiplier: 10.0
         warmup: 10
-      aug_info:
-        - RandomCrop:
-            padding: 4
-        - RandomHorizontalFlip
     semantic_params:
       modelname: resnet18
       pretrained: false
@@ -51,7 +47,3 @@ AL:
         use: True
         multiplier: 10.0
         warmup: 10
-      aug_info:
-        - RandomCrop:
-            padding: 4
-        - RandomHorizontalFlip

@@ -42,7 +42,3 @@ AL:
         use: True
         multiplier: 10.0
         warmup: 10
-      aug_info:
-        - RandomCrop:
-            padding: 4
-        - RandomHorizontalFlip

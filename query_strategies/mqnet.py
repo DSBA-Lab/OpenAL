@@ -84,7 +84,6 @@ class MQNet(Strategy):
             sched_name       = metric_params['sched_name'],
             sched_params     = metric_params['sched_params'],
             warmup_params    = metric_params.get('warmup_params', {}),
-            aug_info         = metric_params.get('aug_info', None),
             savepath         = os.path.join(savedir, 'metric_model.pt'), 
             accelerator      = accelerator,
             seed             = seed, 
