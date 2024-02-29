@@ -118,13 +118,13 @@ def load_tiny_imagenet_200(datadir: str, img_size: int, mean: tuple, std: tuple,
         root      = os.path.join(datadir,'tiny-imagenet-200','train'),
         transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
     )
-    trainset.data = [d[0] for d in trainset.imgs]
+    trainset.data = np.array([d[0] for d in trainset.imgs])
     
     testset = datasets.ImageFolder(
         root      = os.path.join(datadir,'tiny-imagenet-200','val'),
         transform = create_augmentation(img_size=img_size, mean=mean, std=std)
     )
-    testset.data = [d[0] for d in testset.imgs]
+    testset.data = np.array([d[0] for d in testset.imgs])
 
     return trainset, testset
 
@@ -154,14 +154,14 @@ def load_imagenet1k(datadir: str, img_size: int, mean: tuple, std: tuple, aug_in
         split     = 'train',
         transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
     )
-    trainset.data = [d[0] for d in trainset.imgs]
+    trainset.data = np.array([d[0] for d in trainset.imgs])
     
     testset = datasets.ImageNet(
         root      = root,
         split     = 'val',
         transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info_test)
     )
-    testset.data = [d[0] for d in testset.imgs]
+    testset.data = np.array([d[0] for d in testset.imgs])
 
     return trainset, testset
     
