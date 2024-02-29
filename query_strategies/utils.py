@@ -87,6 +87,7 @@ class TrainIterableDataset(IterableDataset):
         for k, v in dataset.__dict__.items():
             setattr(self, k, v)
             
+        # TODO: fix condition
         self.sample_idx = sample_idx if isinstance(sample_idx, np.ndarray) else np.arange(len(dataset))
 
     def generate(self):
