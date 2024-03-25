@@ -87,8 +87,7 @@ class TrainIterableDataset(IterableDataset):
         for k, v in dataset.__dict__.items():
             setattr(self, k, v)
             
-        # TODO: fix condition
-        self.sample_idx = sample_idx if isinstance(sample_idx, np.ndarray) else np.arange(len(dataset))
+        self.sample_idx = sample_idx if len(sample_idx) < len(dataset) else np.arange(len(dataset))
 
     def generate(self):
         while True:
@@ -97,6 +96,9 @@ class TrainIterableDataset(IterableDataset):
             
             if isinstance(img, str):
                 img = Image.open(img).convert('RGB')
+            else:
+                img = Image.fromarray(img)
+            
             img = self.transform(img)
         
             yield img, target
