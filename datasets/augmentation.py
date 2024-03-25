@@ -14,13 +14,16 @@ def create_augmentation(img_size: int, mean: tuple, std: tuple, transform: list 
         # update image size
         aug_info = update_img_size(img_size=img_size, aug_info=aug_info)
         
+        transform_aug = []
         # create augmentation
         for aug in aug_info:
             if isinstance(aug, str):
-                transform.insert(-1, __import__('torchvision.transforms', fromlist='transforms').__dict__[aug]())
+                transform_aug.append(__import__('torchvision.transforms', fromlist='transforms').__dict__[aug]())
             elif isinstance(aug, dict) or isinstance(aug, omegaconf.dictconfig.DictConfig):
                 aug_name, aug_value = list(aug.items())[0]
-                transform.insert(-1, __import__('torchvision.transforms', fromlist='transforms').__dict__[aug_name](**aug_value))
+                transform_aug.append(__import__('torchvision.transforms', fromlist='transforms').__dict__[aug_name](**aug_value))
+
+        transform = transform_aug + transform
     
     return transforms.Compose(transform)
 
