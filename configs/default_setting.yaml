@@ -1,27 +1,28 @@
 DEFAULT:
   seed: 0
-  savedir: ./results/benchmark
 DATASET:
   datadir: /datasets
-  batch_size: 32
+  batch_size: 64
   test_batch_size: 2048
   num_workers: 12
   sampler_name: SubsetRandomSampler
   aug_info:
-    - RandomResizedCrop
     - RandomHorizontalFlip
+    - RandomCrop:
+        padding: 4
 OPTIMIZER:
   name: SGD
   lr: 0.1
   params:
     weight_decay: 0.0005
+    momentum: 0.9
 SCHEDULER:
-  name: cosine_annealing
-  params:
-    t_mult: 1
-    eta_min: 0.00001
+  name: multi_step
+  milestones:
+    - 100
+    - 150
 TRAIN:
-  epochs: 100
+  epochs: 200
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10
@@ -30,6 +31,7 @@ TRAIN:
     entity: null
     project_name: null
   params:
+    steps_per_epoch: 100
     metrics_off: false
 LOSS:
   name: CrossEntropyLoss
@@ -37,9 +39,9 @@ MODEL:
   name: resnet18
   pretrained: false
 AL:
-  n_start: 100
-  n_query: 100
-  n_end: 2000
+  n_start: 500
+  n_query: 500
+  n_end: 5000
   n_subset: 0
   init:
     method: stratified_random_select
