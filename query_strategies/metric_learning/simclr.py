@@ -16,7 +16,6 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from .factory import MetricLearning
 from .losses import nt_xent_loss
 from .transform_layers import get_simclr_augmentation, HorizontalFlipLayer, Rotation, CutPerm
-from datasets import create_augmentation
 
 class SimCLRCSI(MetricLearning):
     def __init__(
@@ -51,13 +50,6 @@ class SimCLRCSI(MetricLearning):
     def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
         # set trainset        
         trainset = deepcopy(dataset)
-        trainset.transform = create_augmentation(
-            img_size = trainset.img_size,
-            mean     = trainset.stats['mean'],
-            std      = trainset.stats['std'],
-        )
-        print(trainset.transform)
-        
         trainloader = DataLoader(
             trainset, 
             sampler     = SubsetRandomSampler(indices=sample_idx),
@@ -82,12 +74,12 @@ class SimCLRCSI(MetricLearning):
             leave=False
         )
         
-        
         if self.accelerator != None:
-            self.hflip, self.simclr_aug = self.accelerator.prepare(self.hflip, self.simclr_aug)
+            self.hflip, self.simclr_aug, self.shift_transform = self.accelerator.prepare(self.hflip, self.simclr_aug, self.shift_transform)
         else:
             self.hflip.to(device)
             self.simclr_aug.to(device)
+            self.shift_transform.to(device)
         
         vis_encoder.train()
         
@@ -176,12 +168,6 @@ class SimCLR(MetricLearning):
         
         # set trainset        
         trainset = deepcopy(dataset)
-        trainset.transform = create_augmentation(
-            img_size = trainset.img_size,
-            mean     = trainset.stats['mean'],
-            std      = trainset.stats['std']
-        )
-        
         trainloader = DataLoader(
             trainset, 
             sampler     = SubsetRandomSampler(indices=sample_idx),
