@@ -134,12 +134,10 @@ class MQNet(Strategy):
         select_idx = unlabeled_idx[query_rank]
         
         # meta-learning for next round
-        mqnet = self.meta_learning.init_model(device=device)
         targets = get_target_from_dataset(self.dataset)
         inputs = torch.stack([informativeness_scores, purity_scores], dim=1)[query_rank]
         self.meta_learning.fit(
             model     = model,
-            mqnet     = mqnet,
             X         = self.dataset.data[select_idx],
             X_meta    = inputs,
             y         = targets[select_idx],
@@ -299,16 +297,16 @@ class MetaLearning:
             mqnet.load_state_dict(torch.load(os.path.join(self.savedir, f'meta_model{self.current_round}.pt')))
             mqnet.eval()
         
-        if self.accelerator != None:
-            mqnet = self.accelerator.prepare(mqnet)
-        else:
-            mqnet.to(device)
+        mqnet.to(device)
             
         return mqnet
 
         
-    def fit(self, model, mqnet, X: torch.FloatTensor, X_meta: torch.FloatTensor, y: torch.LongTensor, transform, device: str, **kwargs):
+    def fit(self, model, X: torch.FloatTensor, X_meta: torch.FloatTensor, y: torch.LongTensor, transform, device: str, **kwargs):
         torch_seed(self.seed)
+        
+        # create MQNet
+        mqnet = self.init_model(device=device)
         
         # split dataset
         self.create_trainset(X=X, X_meta=X_meta, y=y, transform=transform)
@@ -322,12 +320,14 @@ class MetaLearning:
             params        = self.sched_params,
             warmup_params = self.warmup_params
         )
-                
+        
+        # accelerator
+        if self.accelerator != None:
+            mqnet, optimizer, scheduler, self.trainloader = self.accelerator.prepare(mqnet, optimizer, scheduler, self.trainloader)
+
+        # training
         desc = '[Meta-Query Net] lr: {lr:.3e}'
         p_bar = tqdm(range(self.epochs), total=self.epochs)
-        
-        mqnet = self.init_model(device=device)
-
         model.eval()
         for _ in p_bar:
             p_bar.set_description(desc=desc.format(lr=optimizer.param_groups[0]['lr']))
@@ -349,9 +349,6 @@ class MetaLearning:
             
         dataset = MetaDataset(X=X, X_meta=X_meta, y=y, transform=transform)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
-        
-        if self.accelerator != None:
-            dataloader = self.accelerator.prepare(dataloader)
         
         setattr(self, 'trainloader', dataloader)
     
@@ -423,6 +420,8 @@ class MetaDataset(Dataset):
         
         if isinstance(img, str):
             img = Image.open(img).convert('RGB')
+        else:
+            img = Image.fromarray(img)
             
         x_i = self.transform(img)
         x_meta_i = self.X_meta[i]
