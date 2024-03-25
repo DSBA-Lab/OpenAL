@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as transforms
 from torch.autograd import Function
 
 if torch.__version__ >= '1.4.0':
@@ -301,29 +300,6 @@ class RandomColorGrayLayer(nn.Module):
             gray = inputs * (1 - _mask) + gray * _mask
 
         return gray
-
-
-def get_simclr_aug(img_size: tuple, aug_info: list, normalize = None):
-    if isinstance(img_size, int):
-        img_size = (img_size, img_size)
-    
-    augments_dict = {
-        'ColorJitter': transforms.RandomApply([transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8),
-        'RandomGrayscale': transforms.RandomGrayscale(p=0.2),
-        'RandomResizedCrop': transforms.RandomResizedCrop(size=img_size, scale=(0.08, 1.)),
-        'RandomHorizontalFlip': transforms.RandomHorizontalFlip(),
-        'ToTensor': transforms.ToTensor(),
-    }
-    
-    # create augmentations
-    transform = []
-    for aug in aug_info:
-        transform.append(augments_dict[aug])
-            
-    if normalize != None:
-        transform.append(normalize)
-    
-    return transforms.Compose(transform)
 
 
 class TwoCropTransform:
