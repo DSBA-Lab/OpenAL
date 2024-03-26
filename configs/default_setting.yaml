@@ -18,9 +18,10 @@ OPTIMIZER:
     momentum: 0.9
 SCHEDULER:
   name: multi_step
-  milestones:
-    - 100
-    - 150
+  params:
+    milestones:
+      - 100
+      - 150
 TRAIN:
   epochs: 200
   grad_accum_steps: 1
