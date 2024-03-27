@@ -83,11 +83,12 @@ class MyEncoder(json.JSONEncoder):
             
             
 class TrainIterableDataset(IterableDataset):
-    def __init__(self, dataset, sample_idx: np.ndarray = None):
+    def __init__(self, dataset, sample_idx: np.ndarray = None, return_index: bool = False):
         for k, v in dataset.__dict__.items():
             setattr(self, k, v)
             
         self.sample_idx = sample_idx if len(sample_idx) < len(dataset) else np.arange(len(dataset))
+        self.return_index = return_index
 
     def generate(self):
         while True:
@@ -101,7 +102,24 @@ class TrainIterableDataset(IterableDataset):
             
             img = self.transform(img)
         
-            yield img, target
+            if self.return_index:
+                yield idx, img, target
+            else:
+                yield img, target
 
     def __iter__(self):
         return iter(self.generate())
+    
+    
+class IndexDataset:
+    def __init__(self, dataset):
+        self.dataset = dataset
+        for k, v in dataset.__dict__.items():
+            setattr(self, k, v)
+            
+    def __getitem__(self, idx):
+        img, target = self.dataset[idx]
+        return idx, img, target
+    
+    def __len__(self):
+        return len(self.dataset)
