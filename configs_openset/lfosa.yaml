@@ -1,0 +1,23 @@
+AL:
+  strategy: LfOSA
+  ood_ratio: 0.1
+  nb_id_class: 4
+  openset_params:
+    max_iter: 10
+    tol: 1e-2
+    reg_covar: 5e-4
+    detector_params:
+      modelname: resnet18
+      temperature: 0.5
+      epochs: 100
+      batch_size: 32
+      num_workers: 8
+      opt_name: SGD
+      lr: 0.1
+      opt_params:
+        weight_decay: 5e-4
+        momentum: 0.9
+      sched_name: step_lr
+      sched_params:
+        step_size: 20
+        gamma: 0.5
