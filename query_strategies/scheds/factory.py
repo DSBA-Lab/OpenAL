@@ -6,6 +6,8 @@ def create_scheduler(sched_name: str, optimizer, epochs: int, params: dict, warm
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=params['t_mult'], eta_min=params['eta_min'])
     elif sched_name == 'multi_step':
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=params['milestones'])
+    elif sched_name == 'step_lr':
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=params['step_size'], gamma=params['gamma'])
         
     # add warmup
     if warmup_params.get('use'):

@@ -15,6 +15,8 @@ from .prompt_ensemble import PromptEnsemble
 from .mqnet import MQNet
 from .clipn_al import CLIPNAL
 from .ccal import CCAL
+from .lfosa import LfOSA
+from .eoal import EOAL
 from .factory import create_query_strategy
 from .sampler import SubsetSequentialSampler, SubsetWeightedRandomSampler
 from .scheds import create_scheduler
