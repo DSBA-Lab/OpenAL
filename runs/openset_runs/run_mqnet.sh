@@ -1,0 +1,22 @@
+strategies='learning_loss'
+seed=$1
+ds=$2
+ood_ratio=$3
+savedir=$4
+
+if [[ $ds == 'CIFAR10' ]];then
+    id_class=4
+elif [[ $ds == 'CIFAR100' ]];then
+    id_class=40
+fi
+
+python main.py \
+    default_cfg=./configs/default_setting.yaml \
+    strategy_cfg=./configs/$strategies.yaml \
+    openset_cfg=./configs_openset/mqnet.yaml \
+    DEFAULT.exp_name=$strategies-ood$ood_ratio \
+    DATASET.name=$ds \
+    AL.ood_ratio=$ood_ratio \
+    AL.nb_id_class=$id_class \
+    DEFAULT.seed=$seed \
+    DEFAULT.savedir=$savedir
