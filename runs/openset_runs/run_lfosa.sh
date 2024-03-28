@@ -16,6 +16,5 @@ python main.py \
     DATASET.name=$ds \
     AL.ood_ratio=$ood_ratio \
     AL.nb_id_class=$id_class \
-    TRAIN.wandb.use=False \
     DEFAULT.seed=$seed \
     DEFAULT.savedir=$savedir
