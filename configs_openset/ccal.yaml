@@ -13,7 +13,7 @@ AL:
       sim_lambda: 1.0
       epochs: 700
       batch_size: 32
-      num_workers: 8
+      num_workers: 4
       opt_name: SGD
       lr: 0.1
       opt_params:
@@ -33,7 +33,7 @@ AL:
       simclr_dim: 128
       epochs: 700
       batch_size: 32
-      num_workers: 8
+      num_workers: 4
       opt_name: SGD
       lr: 0.1
       opt_params:

@@ -9,7 +9,7 @@ AL:
       epochs: 100
       steps_per_epoch: 100
       batch_size: 32
-      num_workers: 8
+      num_workers: 4
       margin: 1.0
       opt_name: SGD
       lr: 0.001
@@ -25,7 +25,7 @@ AL:
       sim_lambda: 1.0
       epochs: 1000
       batch_size: 32
-      num_workers: 8
+      num_workers: 4
       opt_name: SGD
       lr: 0.1
       opt_params:

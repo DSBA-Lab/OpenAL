@@ -8,13 +8,13 @@ AL:
     pareta_alpha: 0.8
     reg_w: 0.1
     train_params:
-      epochs: 100
-      batch_size: 32
+      epochs: 300
+      batch_size: 128
       temperature: 0.5
     binary_clf_params:
-      num_workers: 8
+      num_workers: 4
       opt_name: SGD
-      lr: 0.1
+      lr: 0.01
       opt_params:
         weight_decay: 5e-4
         momentum: 0.9
@@ -24,9 +24,9 @@ AL:
         gamma: 0.5
     detector_params:
       modelname: resnet18
-      num_workers: 8
+      num_workers: 4
       opt_name: SGD
-      lr: 0.1
+      lr: 0.01
       opt_params:
         weight_decay: 5e-4
         momentum: 0.9

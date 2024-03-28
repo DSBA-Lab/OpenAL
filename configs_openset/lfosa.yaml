@@ -9,11 +9,11 @@ AL:
     detector_params:
       modelname: resnet18
       temperature: 0.5
-      epochs: 100
-      batch_size: 32
-      num_workers: 8
+      epochs: 300
+      batch_size: 128
+      num_workers: 4
       opt_name: SGD
-      lr: 0.1
+      lr: 0.01
       opt_params:
         weight_decay: 5e-4
         momentum: 0.9
