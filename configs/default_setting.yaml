@@ -31,7 +31,6 @@ TRAIN:
     entity: null
     project_name: null
   params:
-    steps_per_epoch: 100
     metrics_off: false
 LOSS:
   name: CrossEntropyLoss
