@@ -3,6 +3,7 @@ seed=$1
 ds=$2
 ood_ratio=$3
 savedir=$4
+gpu_id=$5
 
 for s in $strategies
 do
@@ -11,9 +12,11 @@ do
         id_class=4
     elif [[ $ds == 'CIFAR100' ]];then
         id_class=40
+    elif [[ $ds == 'Tiny_ImageNet_200' ]];then
+        id_class=40
     fi
 
-    python main.py \
+    CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
         default_cfg=./configs/default_setting.yaml \
         strategy_cfg=./configs/$s.yaml \
         openset_cfg=./configs_openset/clipnal.yaml \
@@ -24,7 +27,7 @@ do
         DEFAULT.seed=$seed \
         DEFAULT.savedir=$savedir
 
-    python main.py \
+    CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
         default_cfg=./configs/default_setting.yaml \
         strategy_cfg=./configs/$s.yaml \
         openset_cfg=./configs_openset/clipnal.yaml \
