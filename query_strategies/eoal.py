@@ -18,8 +18,6 @@ from .utils import TrainIterableDataset, IndexDataset
 from .optims import create_optimizer
 from .scheds import create_scheduler
 
-import pdb
-
 class EOAL(Strategy):
     def __init__(
         self, 
@@ -82,7 +80,7 @@ class EOAL(Strategy):
         
     def query(self, model, **kwargs) -> np.ndarray:
         # whether first round or not
-        is_first_round = True if self.detect.current_round == 0 else False
+        have_ood = True if (self.is_ood==True).sum() == 0 else False
         
         unlabeled_idx = self.get_unlabeled_idx()
         
@@ -90,7 +88,7 @@ class EOAL(Strategy):
         device = next(model.parameters()).device
         
         # training detector and binary classifier    
-        detector, bc_classifier, ood_cluster_info = self.fit(device=device, is_first_round=is_first_round)
+        detector, bc_classifier, ood_cluster_info = self.fit(device=device, have_ood=have_ood)
         
         # get detector's predictions, features, and binary classifiers' outputs
         outputs = self.extract_outputs(
@@ -103,7 +101,7 @@ class EOAL(Strategy):
         scores_c = self.closed_set_entropy(outputs_bc=outputs['outputs_bc'])
         
         # entropy scores
-        if is_first_round:
+        if have_ood:
             scores = scores_c
         else:
             # distance-based entropy
@@ -200,7 +198,7 @@ class EOAL(Strategy):
         dists = torch.cdist(features, ood_cluster_center)
         q = torch.softmax(-dists, dim=1)
         scores_d = -torch.sum(q*torch.log(q+1e-20), 1)
-        scores_d = scores_d / np.log(self.num_id_class)
+        scores_d = scores_d / np.log(len(ood_cluster_center))
         
         scores_d = scores_d.cpu()
         
@@ -297,10 +295,10 @@ class EOAL(Strategy):
         
         return dataloader
     
-    def fit(self, device: str, is_first_round: bool = False):    
+    def fit(self, device: str, have_ood: bool = False):    
         # sample idx is labeled. If current round is not first, then use with ood samples
         sample_idx = np.where(self.is_labeled==True)[0]
-        if not is_first_round:
+        if not have_ood:
             ood_idx = np.where(self.is_ood==True)[0]
             sample_idx = np.r_[sample_idx, ood_idx]
         
@@ -334,7 +332,7 @@ class EOAL(Strategy):
         
         for epoch in p_bar:
             # if current round is not first, use ood sample clustering information
-            if is_first_round:
+            if have_ood:
                 ood_cluster_info = None
             else:
                 ood_cluster_info = self.ood_clustering(detector, ood_idx=ood_idx, device=device)
@@ -347,7 +345,7 @@ class EOAL(Strategy):
                 optimizer_det    = optimizer_det,
                 optimizer_bc     = optimizer_bc,
                 ood_cluster_info = ood_cluster_info,
-                is_first_round   = is_first_round,
+                have_ood         = have_ood,
                 device           = device
             )
             
@@ -373,7 +371,7 @@ class EOAL(Strategy):
     
     def train(
         self, detector, bc_classifier, trainloader, criterion, optimizer_det, optimizer_bc, 
-        ood_cluster_info, is_first_round: bool, device: str
+        ood_cluster_info, have_ood: bool, device: str
     ):
         optimizer_det.zero_grad()
         optimizer_bc.zero_grad()
@@ -418,11 +416,11 @@ class EOAL(Strategy):
                 pareto_alpha   = self.pareta_alpha, 
                 weight         = self.w_ent, 
                 num_id_class   = self.num_id_class, 
-                is_first_round = is_first_round
+                have_ood       = have_ood
             )
             
             # tuplet loss for clustering
-            if is_first_round:
+            if have_ood:
                 loss_t = 0
             else:
                 ood_cluster_idx = []
@@ -457,8 +455,8 @@ class EOAL(Strategy):
             total_loss += loss.item()
             total_loss_ce += loss_ce.item()
             total_loss_bce += loss_bce.item()
-            total_loss_em += loss_em if is_first_round else loss_em.item()
-            total_loss_t += loss_t if is_first_round else loss_t.item()
+            total_loss_em += loss_em if have_ood else loss_em.item()
+            total_loss_t += loss_t if have_ood else loss_t.item()
 
             # accuracy 
             correct += targets.eq(outputs_det.argmax(dim=1)).sum().item()
@@ -527,7 +525,14 @@ class EOAL(Strategy):
         all_features = torch.cat(all_features, dim=0)
             
         # clustering
-        _, _, req_c = FINCH(all_features.cpu().numpy(), req_clust=self.w_unk_cls*self.num_id_class, verbose=False)
+        self.req_clust = self.num_id_class # set req_clust
+        req_c = None
+        while not isinstance(req_c, np.ndarray):
+            try:
+                _, _, req_c = FINCH(all_features.cpu().numpy(), req_clust=self.w_unk_cls*self.req_clust, verbose=False)
+            except:
+                req_c = None
+                self.req_clust -= 1
         
         # get cluster labels       
         cluster_labels = torch.tensor(req_c, device=device)
@@ -543,9 +548,10 @@ class EOAL(Strategy):
         
     def calc_cluster_centers(self, features, labels):
         _, embed_size = features.size() # number of unlabeled samples x embedding size
-        cluster_centers = torch.zeros(self.num_id_class, embed_size, device=features.device)
+        nb_cluster = torch.unique(labels).size(0)
+        cluster_centers = torch.zeros(nb_cluster, embed_size, device=features.device)
         
-        for c in range(self.num_id_class):
+        for c in range(nb_cluster):
             # find index of cluster c
             c_idx = torch.where(labels == c)[0]
             features_c = features[c_idx]
@@ -555,7 +561,7 @@ class EOAL(Strategy):
         return cluster_centers
         
     
-    def entropic_bc_loss(self, outputs_bc, labels, pareto_alpha: float, weight: float, num_id_class: int, is_first_round: bool = False):
+    def entropic_bc_loss(self, outputs_bc, labels, pareto_alpha: float, weight: float, num_id_class: int, have_ood: bool = False):
         assert len(outputs_bc.size()) == 3
         assert outputs_bc.size(1) == 2
 
@@ -566,14 +572,14 @@ class EOAL(Strategy):
         label_p[label_range, labels] = 1 
         label_n = 1 - label_p
         
-        if not is_first_round:
+        if not have_ood:
             label_p[labels==num_id_class, :] = pareto_alpha/num_id_class
             label_n[labels==num_id_class, :] = pareto_alpha/num_id_class
             
         label_p = label_p[:, :-1]
         label_n = label_n[:, :-1]
         
-        if (not is_first_round) and (weight != 0):
+        if (not have_ood) and (weight != 0):
             open_loss_pos = torch.mean(torch.sum(-torch.log(outputs_bc[labels<num_id_class, 1, :] + 1e-8) * (1 - pareto_alpha) * label_p[labels<num_id_class], 1))
             open_loss_neg = torch.mean(torch.max(-torch.log(outputs_bc[labels<num_id_class, 0, :] + 1e-8) * (1 - pareto_alpha) * label_n[labels<num_id_class], 1)[0]) ##### take max negative alone
             open_loss_pos_ood = torch.mean(torch.sum(-torch.log(outputs_bc[labels==num_id_class, 1, :] + 1e-8) * label_p[labels==num_id_class], 1))
