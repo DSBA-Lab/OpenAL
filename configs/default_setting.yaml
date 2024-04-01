@@ -17,11 +17,10 @@ OPTIMIZER:
     weight_decay: 0.0005
     momentum: 0.9
 SCHEDULER:
-  name: multi_step
+  name: cosine_annealing
   params:
-    milestones:
-      - 100
-      - 150
+    t_mult: 1
+    eta_min: 1.0e-05
 TRAIN:
   epochs: 200
   grad_accum_steps: 1
@@ -40,9 +39,9 @@ MODEL:
   name: resnet18
   pretrained: false
 AL:
-  n_start: 500
-  n_query: 500
-  n_end: 5000
+  n_start: 1500
+  n_query: 1500
+  n_end: 15000
   n_subset: 0
   init:
     method: stratified_random_select
