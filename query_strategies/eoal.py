@@ -80,7 +80,7 @@ class EOAL(Strategy):
         
     def query(self, model, **kwargs) -> np.ndarray:
         # whether first round or not
-        have_ood = True if (self.is_ood==True).sum() == 0 else False
+        have_ood = False if (self.is_ood==True).sum() == 0 else True
         
         unlabeled_idx = self.get_unlabeled_idx()
         
@@ -102,13 +102,12 @@ class EOAL(Strategy):
         
         # entropy scores
         if have_ood:
-            scores = scores_c
-        else:
             # distance-based entropy
             scores_d = self.distance_entropy(features=outputs['features'], ood_cluster_center=ood_cluster_info['centers'])
-
             # scores
             scores = scores_c - scores_d
+        else:
+            scores = scores_c
         
         # diversity
         selected_id_idx = self.diversity(
@@ -298,7 +297,7 @@ class EOAL(Strategy):
     def fit(self, device: str, have_ood: bool = False):    
         # sample idx is labeled. If current round is not first, then use with ood samples
         sample_idx = np.where(self.is_labeled==True)[0]
-        if not have_ood:
+        if have_ood:
             ood_idx = np.where(self.is_ood==True)[0]
             sample_idx = np.r_[sample_idx, ood_idx]
         
@@ -313,16 +312,12 @@ class EOAL(Strategy):
         
         # init binary classifier
         bc_classifier = self.bc_clf.init_model(in_features=detector.num_features, device=device)
-        optimizer_bc, scheduler_bc = self.bc_clf.compile(bc_classifier=bc_classifier)
+        optimizer_bc = self.bc_clf.compile(bc_classifier=bc_classifier)
         
         if self.accelerator != None:
-            detector, bc_classifier, trainloader, optimizer_det, scheduler_det, optimizer_bc, scheduler_bc = self.accelerator.prepare(
-                detector, bc_classifier, trainloader, optimizer_det, scheduler_det, optimizer_bc, scheduler_bc
+            detector, bc_classifier, trainloader, optimizer_det, scheduler_det, optimizer_bc = self.accelerator.prepare(
+                detector, bc_classifier, trainloader, optimizer_det, scheduler_det, optimizer_bc
             )
-        
-        # train mode on
-        detector.train()
-        bc_classifier.train()
         
         desc = '[TRAIN Detector] Loss: {loss:.>6.4f} ' \
                'Loss-CE: {loss_ce:.>6.4f} Loss-BCE: {loss_bce:.>6.4f} Loss-EM: {loss_em:.>6.4f} Loss_T: {loss_t:.>6.4f} ' \
@@ -333,9 +328,9 @@ class EOAL(Strategy):
         for epoch in p_bar:
             # if current round is not first, use ood sample clustering information
             if have_ood:
-                ood_cluster_info = None
-            else:
                 ood_cluster_info = self.ood_clustering(detector, ood_idx=ood_idx, device=device)
+            else:
+                ood_cluster_info = None
 
             results = self.train(
                 detector         = detector,
@@ -345,12 +340,10 @@ class EOAL(Strategy):
                 optimizer_det    = optimizer_det,
                 optimizer_bc     = optimizer_bc,
                 ood_cluster_info = ood_cluster_info,
-                have_ood         = have_ood,
                 device           = device
             )
             
             scheduler_det.step()
-            scheduler_bc.step()
             
             p_bar.set_description(desc=desc.format(
                 loss     = results['loss'],
@@ -371,8 +364,14 @@ class EOAL(Strategy):
     
     def train(
         self, detector, bc_classifier, trainloader, criterion, optimizer_det, optimizer_bc, 
-        ood_cluster_info, have_ood: bool, device: str
+        ood_cluster_info, device: str
     ):
+        
+        # train mode on
+        detector.train()
+        bc_classifier.train()
+        
+        # zero grad
         optimizer_det.zero_grad()
         optimizer_bc.zero_grad()
         
@@ -393,6 +392,10 @@ class EOAL(Strategy):
                
         p_bar = tqdm(trainloader, total=steps_per_epoch, leave=False)
         for idx, inputs, targets in p_bar:
+            # have ood
+            with_ood = False
+            if self.num_id_class in targets:
+                with_ood = True
 
             if self.accelerator == None:
                 inputs, targets = inputs.to(device), targets.to(device)
@@ -416,13 +419,11 @@ class EOAL(Strategy):
                 pareto_alpha   = self.pareta_alpha, 
                 weight         = self.w_ent, 
                 num_id_class   = self.num_id_class, 
-                have_ood       = have_ood
+                with_ood       = with_ood
             )
             
             # tuplet loss for clustering
-            if have_ood:
-                loss_t = 0
-            else:
+            if with_ood:
                 ood_cluster_idx = []
                 for i in idx.cpu().tolist():
                     if i in ood_cluster_info['index']:
@@ -434,6 +435,8 @@ class EOAL(Strategy):
                     cluster_centers = ood_cluster_info['centers'], 
                     cluster_labels  = ood_cluster_info['labels'][ood_cluster_idx]
                 )
+            else:
+                loss_t = 0
                 
             # calc loss
             loss = loss_ce + loss_bce + loss_em + (self.reg_w * loss_t)
@@ -455,8 +458,8 @@ class EOAL(Strategy):
             total_loss += loss.item()
             total_loss_ce += loss_ce.item()
             total_loss_bce += loss_bce.item()
-            total_loss_em += loss_em if have_ood else loss_em.item()
-            total_loss_t += loss_t if have_ood else loss_t.item()
+            total_loss_em += loss_em.item() if with_ood else loss_em
+            total_loss_t += loss_t.item() if with_ood else loss_t
 
             # accuracy 
             correct += targets.eq(outputs_det.argmax(dim=1)).sum().item()
@@ -561,7 +564,7 @@ class EOAL(Strategy):
         return cluster_centers
         
     
-    def entropic_bc_loss(self, outputs_bc, labels, pareto_alpha: float, weight: float, num_id_class: int, have_ood: bool = False):
+    def entropic_bc_loss(self, outputs_bc, labels, pareto_alpha: float, weight: float, num_id_class: int, with_ood: bool = False):
         assert len(outputs_bc.size()) == 3
         assert outputs_bc.size(1) == 2
 
@@ -572,14 +575,14 @@ class EOAL(Strategy):
         label_p[label_range, labels] = 1 
         label_n = 1 - label_p
         
-        if not have_ood:
+        if with_ood:
             label_p[labels==num_id_class, :] = pareto_alpha/num_id_class
             label_n[labels==num_id_class, :] = pareto_alpha/num_id_class
             
         label_p = label_p[:, :-1]
         label_n = label_n[:, :-1]
         
-        if (not have_ood) and (weight != 0):
+        if with_ood and (weight != 0):
             open_loss_pos = torch.mean(torch.sum(-torch.log(outputs_bc[labels<num_id_class, 1, :] + 1e-8) * (1 - pareto_alpha) * label_p[labels<num_id_class], 1))
             open_loss_neg = torch.mean(torch.max(-torch.log(outputs_bc[labels<num_id_class, 0, :] + 1e-8) * (1 - pareto_alpha) * label_n[labels<num_id_class], 1)[0]) ##### take max negative alone
             open_loss_pos_ood = torch.mean(torch.sum(-torch.log(outputs_bc[labels==num_id_class, 1, :] + 1e-8) * label_p[labels==num_id_class], 1))
@@ -710,15 +713,8 @@ class BCClassifier:
         
     def compile(self, bc_classifier):
         optimizer = create_optimizer(opt_name=self.opt_name, model=bc_classifier, lr=self.lr, opt_params=self.opt_params)
-        scheduler = create_scheduler(
-            sched_name    = self.sched_name, 
-            optimizer     = optimizer, 
-            epochs        = self.epochs, 
-            params        = self.sched_params,
-            warmup_params = self.warmup_params
-        )
-        
-        return optimizer, scheduler    
+
+        return optimizer    
 
     
 class BCModel(nn.Module):
