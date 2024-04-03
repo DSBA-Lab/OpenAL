@@ -9,7 +9,7 @@ if [[ $ds == 'CIFAR10' ]];then
 elif [[ $ds == 'CIFAR100' ]];then
     id_class=40
 elif [[ $ds == 'Tiny_ImageNet_200' ]];then
-    id_class=40
+    id_class=80
 fi
 
 CUDA_VISIBLE_DEVICES=$gpu_id python main.py \

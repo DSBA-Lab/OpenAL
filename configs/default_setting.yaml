@@ -17,10 +17,11 @@ OPTIMIZER:
     weight_decay: 0.0005
     momentum: 0.9
 SCHEDULER:
-  name: cosine_annealing
+  name: multi_step
   params:
-    t_mult: 1
-    eta_min: 1.0e-05
+    milestones:
+      - 100
+      - 150
 TRAIN:
   epochs: 200
   grad_accum_steps: 1
@@ -31,6 +32,7 @@ TRAIN:
     entity: null
     project_name: null
   params:
+    steps_per_epoch: 100
     metrics_off: false
 LOSS:
   name: CrossEntropyLoss
@@ -38,9 +40,9 @@ MODEL:
   name: resnet18
   pretrained: false
 AL:
-  n_start: 1500
-  n_query: 1500
-  n_end: 15000
+  n_start: 500
+  n_query: 500
+  n_end: 5000
   n_subset: 0
   init:
     method: stratified_random_select
