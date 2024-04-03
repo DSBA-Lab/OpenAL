@@ -160,7 +160,8 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     end = time.time()
     
     model.train()
-    optimizer.zero_grad()
+    for k in optimizer.keys():
+        optimizer[k].zero_grad()
     
     steps_per_epoch = train_params.get('steps_per_epoch') if train_params.get('steps_per_epoch') else len(dataloader)
     
@@ -175,12 +176,18 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
                     cls_features = query_model.forward_features(inputs)[:,0]
                 outputs = model(inputs, cls_features=cls_features)
             else:
-                outputs = model(inputs)
-            
-            # detach LPM for learning loss
-            if train_params.get('is_detach_lpm', False):
-                for k, v in model.layer_outputs.items():
-                    model.layer_outputs[k] = v.detach()
+                if getattr(model, 'LPM', False): # learning loss
+                    outputs = {}
+                    outputs['logits'] = model.backbone(inputs)
+                    
+                    # detach LPM for learning loss
+                    if train_params.get('is_detach_lpm', False):
+                        for k, v in model.layer_outputs.items():
+                            model.layer_outputs[k] = v.detach()
+                    
+                    outputs['loss_pred'] = model.LPM(model.layer_outputs)
+                else:
+                    outputs = model(inputs)        
 
             # calc loss
             if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
@@ -190,8 +197,9 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             accelerator.backward(loss)
 
             # loss update
-            optimizer.step()
-            optimizer.zero_grad()
+            for k in optimizer.keys():
+                optimizer[k].step()
+                optimizer[k].zero_grad()
             losses_m.update(loss.item())
 
             # accuracy 
@@ -218,7 +226,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
                                 steps_per_epoch//accelerator.gradient_accumulation_steps, 
                                 loss       = losses_m, 
                                 acc        = acc_m, 
-                                lr         = optimizer.param_groups[0]['lr'],
+                                lr         = optimizer['backbone'].param_groups[0]['lr'],
                                 batch_time = batch_time_m,
                                 rate       = inputs.size(0) / batch_time_m.val,
                                 rate_avg   = inputs.size(0) / batch_time_m.avg,
@@ -349,7 +357,7 @@ def fit(
 
         # wandb
         if use_wandb:
-            metrics = OrderedDict(lr=optimizer.param_groups[0]['lr'])
+            metrics = OrderedDict(lr=optimizer['backbone'].param_groups[0]['lr'])
             metrics.update([('train_' + k, v) for k, v in train_metrics.items()])
             
             if testloader != None:
@@ -361,7 +369,8 @@ def fit(
         
         # update scheduler  
         if scheduler:
-            scheduler.step()
+            for k in scheduler.keys():
+                scheduler[k].step()
         
 
 def full_run(
@@ -949,7 +958,8 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             opt_name   = cfg.OPTIMIZER.name, 
             model      = model, 
             lr         = cfg.OPTIMIZER.lr, 
-            opt_params = cfg.OPTIMIZER.get('params',{})
+            opt_params = cfg.OPTIMIZER.get('params',{}),
+            backbone   = True
         )
 
         # scheduler
@@ -977,9 +987,15 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         )
         
         # prepraring accelerator
-        model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
-            model, optimizer, trainloader, validloader, testloader, scheduler
+        model, trainloader, validloader, testloader = accelerator.prepare(
+            model, trainloader, validloader, testloader
         )
+        
+        for k, opt in optimizer.items():
+            optimizer[k] = accelerator.prepare(opt)
+            
+        for k, sched in scheduler.items():
+            scheduler[k] = accelerator.prepare(sched)
         
         # initialize wandb
         if cfg.TRAIN.wandb.use:
