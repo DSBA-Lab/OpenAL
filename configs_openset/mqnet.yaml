@@ -12,11 +12,7 @@ AL:
       num_workers: 4
       margin: 1.0
       opt_name: SGD
-      lr: 0.001
-      sched_name: multi_step
-      sched_params:
-        milestones:
-          - 50
+      lr: 0.01
     metric_params:
       modelname: resnet18
       pretrained: false
