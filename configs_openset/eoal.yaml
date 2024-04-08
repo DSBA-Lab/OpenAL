@@ -1,7 +1,6 @@
 AL:
   strategy: EOAL
   ood_ratio: 0.1
-  nb_id_class: 4
   openset_params:
     w_unk_cls: 1
     w_ent: 1.

@@ -1,7 +1,6 @@
 AL:
   strategy: LfOSA
   ood_ratio: 0.1
-  nb_id_class: 4
   openset_params:
     max_iter: 10
     tol: 1e-2
@@ -9,7 +8,7 @@ AL:
     detector_params:
       modelname: resnet18
       temperature: 0.5
-      epochs: 300
+      epochs: 100
       batch_size: 128
       num_workers: 4
       opt_name: SGD

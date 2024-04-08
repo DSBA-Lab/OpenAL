@@ -1,7 +1,6 @@
 AL:
   strategy: CLIPNAL
   ood_ratio: 0.1
-  nb_id_class: 4
   openset_params:
     selected_strategy: LeastConfidence
     use_sim: false

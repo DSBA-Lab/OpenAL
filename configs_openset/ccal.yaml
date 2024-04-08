@@ -1,7 +1,6 @@
 AL:
   strategy: CCAL
   ood_ratio: 0.1
-  nb_id_class: 4
   openset_params:
     k: 100.0
     t: 0.9
