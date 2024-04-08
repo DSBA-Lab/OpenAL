@@ -93,11 +93,18 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
     y_score = torch.nn.functional.softmax(torch.FloatTensor(y_score), dim=1)
     
     # metrics
-    auroc = roc_auc_score(y_true, y_score, average='macro', multi_class='ovr')
-    f1 = f1_score(y_true, y_pred, average='macro', zero_division=0.0)
-    recall = recall_score(y_true, y_pred, average='macro', zero_division=0.0)
-    precision = precision_score(y_true, y_pred, average='macro', zero_division=0.0)
-    bcr = balanced_accuracy_score(y_true, y_pred)
+    if y_score.shape[1] == 2: # binary
+        auroc = roc_auc_score(y_true, y_score[:,1])
+        f1 = f1_score(y_true, y_pred)
+        recall = recall_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred)
+        bcr = balanced_accuracy_score(y_true, y_pred)
+    else: # multi-class
+        auroc = roc_auc_score(y_true, y_score, average='macro', multi_class='ovr')
+        f1 = f1_score(y_true, y_pred, average='macro', zero_division=0.0)
+        recall = recall_score(y_true, y_pred, average='macro', zero_division=0.0)
+        precision = precision_score(y_true, y_pred, average='macro', zero_division=0.0)
+        bcr = balanced_accuracy_score(y_true, y_pred)
 
     metrics = {
         'auroc'     : auroc, 
@@ -112,9 +119,15 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
         cm = confusion_matrix(y_true, y_pred)
         
         # merics per class
-        f1_per_class = f1_score(y_true, y_pred, average=None, zero_division=0.0)
-        recall_per_class = recall_score(y_true, y_pred, average=None, zero_division=0.0)
-        precision_per_class = precision_score(y_true, y_pred, average=None, zero_division=0.0)
+        if y_score.shape[1] == 2: # binary
+            f1_per_class = f1_score(y_true, y_pred)
+            recall_per_class = recall_score(y_true, y_pred)
+            precision_per_class = precision_score(y_true, y_pred)
+        else: # multi-class
+            f1_per_class = f1_score(y_true, y_pred, average=None, zero_division=0.0)
+            recall_per_class = recall_score(y_true, y_pred, average=None, zero_division=0.0)
+            precision_per_class = precision_score(y_true, y_pred, average=None, zero_division=0.0)
+            
         acc_per_class = cm.diagonal() / cm.sum(axis=1)
     
         metrics.update({
