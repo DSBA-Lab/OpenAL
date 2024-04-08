@@ -59,6 +59,7 @@ def parser():
         
         # change num_classes to nb_id_class for open-set AL
         if hasattr(cfg.AL, 'nb_id_class'):
+            cfg.AL.nb_id_class = int(cfg.DATASET.num_classes/cfg.AL.nb_id_ratio)
             cfg.DATASET.num_classes = cfg.AL.nb_id_class
           
     print(OmegaConf.to_yaml(cfg))
