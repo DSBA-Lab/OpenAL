@@ -455,7 +455,7 @@ def full_run(
         sched_name    = cfg.SCHEDULER.name, 
         optimizer     = optimizer, 
         epochs        = cfg.TRAIN.epochs, 
-        params        = cfg.SCHEDULER.params,
+        params        = cfg.SCHEDULER.get('params', {}),
         warmup_params = cfg.SCHEDULER.get('warmup_params', {})
     )
 
@@ -674,7 +674,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             sched_name    = cfg.SCHEDULER.name, 
             optimizer     = optimizer, 
             epochs        = cfg.TRAIN.epochs, 
-            params        = cfg.SCHEDULER.params,
+            params        = cfg.SCHEDULER.get('params', {}),
             warmup_params = cfg.SCHEDULER.get('warmup_params', {})
         )
 
@@ -980,7 +980,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             sched_name    = cfg.SCHEDULER.name, 
             optimizer     = optimizer, 
             epochs        = cfg.TRAIN.epochs, 
-            params        = cfg.SCHEDULER.params,
+            params        = cfg.SCHEDULER.get('params', {}),
             warmup_params = cfg.SCHEDULER.get('warmup_params', {})
         )
 

@@ -28,7 +28,10 @@ def _create_scheduler(sched_name: str, optimizer, epochs: int, params: dict, war
     if sched_name == 'cosine_annealing':
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, T_mult=params['t_mult'], eta_min=params['eta_min'])
     elif sched_name == 'multi_step':
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=params['milestones'])
+        default_milstones = [int(epochs*0.5), int(epochs*0.75)]
+        milestones = params.get('milestones', default_milstones)
+        
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones)
     elif sched_name == 'step_lr':
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=params['step_size'], gamma=params['gamma'])
         
