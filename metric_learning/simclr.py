@@ -4,14 +4,11 @@ code reference
 - https://github1s.com/RUC-DWBI-ML/CCAL/blob/main/senmatic_contrast/simclr.py
 '''
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from copy import deepcopy
 from tqdm.auto import tqdm
-from torch.utils.data import DataLoader, SubsetRandomSampler
 
 from .factory import MetricLearning
 from .losses import nt_xent_loss
@@ -22,8 +19,6 @@ class SimCLRCSI(MetricLearning):
         self, 
         dataname: str, 
         img_size: int, 
-        batch_size: int, 
-        num_workers: int, 
         shift_trans_type: str = 'rotation', 
         sim_lambda: float = 1.0, 
         **init_params
@@ -32,8 +27,6 @@ class SimCLRCSI(MetricLearning):
         
         self.sim_lambda = sim_lambda
         
-        self.batch_size = batch_size
-        self.num_workers = num_workers
         self.temperature = 0.5
         self.clf_criterion = nn.CrossEntropyLoss()
         
@@ -47,29 +40,14 @@ class SimCLRCSI(MetricLearning):
         # hflip
         self.hflip = HorizontalFlipLayer()
     
-    def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
-        # set trainset        
-        trainset = deepcopy(dataset)
-        trainloader = DataLoader(
-            trainset, 
-            sampler     = SubsetRandomSampler(indices=sample_idx),
-            batch_size  = self.batch_size, 
-            num_workers = self.num_workers,
-        )
-        
-        if self.accelerator != None:
-            trainloader = self.accelerator.prepare(trainloader)
-        
-        # set attributions for trainloader and testset
-        setattr(self, 'trainloader', trainloader)
             
-    def train(self, epoch, vis_encoder, optimizer, scheduler, device: str, **kwargs):
+    def train(self, epoch, vis_encoder, dataloader, optimizer, scheduler, device: str, **kwargs):
         total_sim_loss = 0
         total_shift_loss = 0
         
         desc = '[TRAIN] LR: {lr:.3e} Sim Loss(mean): {sim_loss:>6.4f}({sim_loss_mean:>6.4f}) Shift Loss(mean): {shift_loss:>6.4f}({shift_loss_mean:>6.4f})'
         p_bar = tqdm(
-            self.trainloader, 
+            dataloader, 
             desc=desc.format(lr=optimizer.param_groups[0]['lr'], sim_loss=0, sim_loss_mean=0, shift_loss=0, shift_loss_mean=0), 
             leave=False
         )
@@ -118,7 +96,7 @@ class SimCLRCSI(MetricLearning):
             optimizer.step()
             optimizer.zero_grad()
             
-            scheduler.step(epoch - 1 + idx / len(self.trainloader))
+            scheduler.step(epoch - 1 + idx / len(dataloader))
             
             p_bar.set_description(
                 desc=desc.format(
@@ -149,11 +127,9 @@ class SimCLRCSI(MetricLearning):
             
     
 class SimCLR(MetricLearning):
-    def __init__(self, dataname: str, img_size: int, batch_size: int, num_workers: int, **init_params):
+    def __init__(self, dataname: str, img_size: int, **init_params):
         super(SimCLR, self).__init__(**init_params)
         
-        self.batch_size = batch_size
-        self.num_workers = num_workers
         self.temperature = 0.5
         
         self.dataname = dataname
@@ -163,30 +139,12 @@ class SimCLR(MetricLearning):
         
         # hflip
         self.hflip = HorizontalFlipLayer()
-        
-    def create_trainset(self, dataset, sample_idx: np.ndarray, **kwargs):
-        
-        # set trainset        
-        trainset = deepcopy(dataset)
-        trainloader = DataLoader(
-            trainset, 
-            sampler     = SubsetRandomSampler(indices=sample_idx),
-            batch_size  = self.batch_size, 
-            num_workers = self.num_workers,
-        )
-        
-        if self.accelerator != None:
-            trainloader = self.accelerator.prepare(trainloader)
-        
-        # set attributions for trainloader and testset
-        setattr(self, 'trainloader', trainloader)
-        
             
-    def train(self, epoch, vis_encoder, optimizer, scheduler, device: str, **kwargs):
+    def train(self, epoch, vis_encoder, dataloader, optimizer, scheduler, device: str, **kwargs):
         total_loss = 0
         
         desc = '[TRAIN] LR: {lr:.3e} Loss: {loss:>6.4f}'
-        p_bar = tqdm(self.trainloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], loss=total_loss), leave=False)
+        p_bar = tqdm(dataloader, desc=desc.format(lr=optimizer.param_groups[0]['lr'], loss=total_loss), leave=False)
         
         if self.accelerator != None:
             self.hflip, self.simclr_aug = self.accelerator.prepare(self.hflip, self.simclr_aug)
@@ -220,7 +178,7 @@ class SimCLR(MetricLearning):
             optimizer.step()
             optimizer.zero_grad()
             
-            scheduler.step(epoch - 1 + idx / len(self.trainloader))
+            scheduler.step(epoch - 1 + idx / len(dataloader))
             
             p_bar.set_description(desc=desc.format(lr=optimizer.param_groups[0]['lr'], loss=total_loss/(idx+1)))
             

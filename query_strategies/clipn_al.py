@@ -10,7 +10,6 @@ from sklearn.metrics import confusion_matrix, f1_score
 from tqdm.auto import tqdm
 from copy import deepcopy
 
-from query_strategies.metric_learning import create_metric_learning
 from open_clipn import load_model
 from .strategy import Strategy
 from .sampler import SubsetSequentialSampler
@@ -24,10 +23,8 @@ class CLIPNAL(Strategy):
             ckp_path, 
             prompt_path, 
             savedir: str, 
-            seed: int, 
             selected_strategy: str, 
             use_sim: bool = False,
-            metric_params: dict = {}, 
             **init_args
         ):
         
@@ -55,29 +52,10 @@ class CLIPNAL(Strategy):
         
         # similarity
         self.use_sim = use_sim
-        self.use_metric_learning = metric_params.get('use', False)
-        if self.use_sim and not self.use_metric_learning:
+        if self.use_sim:
             self.sim_method = 'sim'
-        elif self.use_sim or self.use_metric_learning:
-            self.sim_method = 'metric_learning'
         else:
             self.sim_method = None
-        
-        if self.use_metric_learning:
-            self.metric_learning = create_metric_learning(
-                method_name     = metric_params['method_name'],
-                vis_encoder     = SupConModel(image_encoder=deepcopy(self.vis_clf.image_encoder)), 
-                epochs          = metric_params['epochs'], 
-                train_transform = self.clipn_train_transform, 
-                opt_name        = metric_params['opt_name'], 
-                lr              = metric_params['lr'], 
-                opt_params      = metric_params['opt_params'],
-                sched_name      = metric_params['sched_name'],
-                sched_params    = metric_params['sched_params'],
-                warmup_params   = metric_params.get('warmup_params', {}),
-                seed            = seed, 
-                **metric_params.get('train_params', {})
-            )
     
     def init_model(self):
         return self.query_strategy.init_model()

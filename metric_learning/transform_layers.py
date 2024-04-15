@@ -22,7 +22,7 @@ def get_simclr_augmentation(img_size: tuple, dataname: str):
     resize_crop = RandomResizedCropLayer(scale=resize_scale, size=img_size)
 
     # Transform define
-    if dataname == 'imagenet': # Using RandomResizedCrop at PIL transform
+    if dataname == 'ImageNet1K': # Using RandomResizedCrop at PIL transform
         transform = nn.Sequential(
             color_jitter,
             color_gray,
@@ -47,7 +47,10 @@ class RandomResizedCropLayer(nn.Module):
         super(RandomResizedCropLayer, self).__init__()
 
         _eye = torch.eye(2, 3)
-        self.size = list(size)
+        if isinstance(size, int):
+            self.size = [size, size]
+        else:
+            self.size = list(size)
         self.register_buffer('_eye', _eye)
         self.scale = scale
         self.ratio = ratio
