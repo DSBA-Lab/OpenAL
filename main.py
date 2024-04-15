@@ -99,9 +99,6 @@ def run(cfg):
     
 
 if __name__=='__main__':
-    # MQNet trainin
-    sys.setrecursionlimit(10000)
-
     # config
     cfg = parser()
     

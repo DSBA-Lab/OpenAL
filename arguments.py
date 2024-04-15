@@ -29,8 +29,9 @@ def parser():
         cfg = OmegaConf.merge(cfg, cfg_resampler)
         del args['resampler_cfg']
         
-    if not cfg.AL.get('strategy'):
-        del cfg['AL']
+    if cfg.get('AL'):
+        if not cfg.AL.get('strategy'):
+            del cfg['AL']
         
     # merge config with new keys
     cfg = OmegaConf.merge(cfg, args)

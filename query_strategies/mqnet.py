@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from query_strategies.metric_learning import create_metric_learning, MetricModel
+from metric_learning.models import MetricModel
 from query_strategies.learning_loss import LearningLoss
 from query_strategies.scheds import create_scheduler
 from query_strategies.optims import create_optimizer
@@ -24,7 +24,7 @@ class MQNet(Strategy):
         savedir: str, 
         selected_strategy: str, 
         meta_params: dict = {}, 
-        metric_params: dict = {}, 
+        metric_params: dict= {},
         accelerator = None,
         **init_args
     ):
@@ -41,6 +41,8 @@ class MQNet(Strategy):
         
         self.savedir = savedir
                 
+        self.accelerator = accelerator
+            
         # meta learning
         self.meta_learning = MetaLearning(
             num_id_class    = self.num_id_class,
@@ -60,34 +62,31 @@ class MQNet(Strategy):
             accelerator     = accelerator,
             seed            = seed, 
         )
-                
-        # metric learning
-        vis_encoder = MetricModel(
+        
+        self.vis_encoder = MetricModel(
             modelname   = metric_params['modelname'], 
             pretrained  = metric_params['pretrained'],
             simclr_dim  = metric_params['simclr_dim'],
             **metric_params.get('model_params', {})
         )
-        self.csi = create_metric_learning(
-            method_name      = 'SimCLRCSI',
-            vis_encoder      = vis_encoder,
-            dataname         = self.dataset.dataname,
-            img_size         = self.dataset.img_size,
-            sim_lambda       = metric_params['sim_lambda'],
-            epochs           = metric_params['epochs'],
-            batch_size       = metric_params['batch_size'], 
-            num_workers      = metric_params['num_workers'],
-            shift_trans_type = metric_params['shift_trans_type'], 
-            opt_name         = metric_params['opt_name'], 
-            opt_params       = metric_params.get('opt_params', {}),
-            lr               = metric_params['lr'], 
-            sched_name       = metric_params['sched_name'],
-            sched_params     = metric_params['sched_params'],
-            warmup_params    = metric_params.get('warmup_params', {}),
-            savepath         = os.path.join(savedir, 'metric_model.pt'), 
-            accelerator      = accelerator,
-            seed             = seed, 
+        self.checkpoint_path = os.path.join(
+            metric_params['checkpoint_path'], 
+            self.dataset.dataname, 
+            f"{metric_params['modelname']}_SimCLRCSI.pt"
         )
+
+    def init_ssl_model(self, device):
+        vis_encoder = deepcopy(self.vis_encoder)
+        vis_encoder.load_state_dict(torch.load(self.checkpoint_path))
+        
+        if self.accelerator != None:
+            vis_encoder = self.accelerator.prepare(vis_encoder)
+        else:
+            vis_encoder.to(device)
+            
+        vis_encoder.eval()
+        
+        return vis_encoder
         
     def init_model(self):
         return self.query_strategy.init_model()
@@ -103,15 +102,9 @@ class MQNet(Strategy):
         # idx
         labeled_idx = np.where(self.is_labeled==True)[0]
         unlabeled_idx = np.where(self.is_unlabeled==True)[0]
-        total_idx = np.r_[
-            np.where(self.is_labeled==True)[0], 
-            np.where(self.is_unlabeled==True)[0], 
-            np.where(self.is_ood==True)[0]
-        ]
         
         # get purity scores for unlabeled samples
         purity_scores = self.get_purity_score(
-            total_idx     = total_idx, 
             unlabeled_idx = unlabeled_idx, 
             labeled_idx   = labeled_idx, 
             device        = device
@@ -180,16 +173,9 @@ class MQNet(Strategy):
         return scores
     
     
-    def get_purity_score(self, total_idx: np.ndarray, unlabeled_idx: np.ndarray, labeled_idx: np.ndarray, device: str):
+    def get_purity_score(self, unlabeled_idx: np.ndarray, labeled_idx: np.ndarray, device: str):
         # fit representation model using CSI
-        vis_encoder = self.csi.init_model(device=device)
-        if not os.path.isfile(self.csi.savepath):
-            self.csi.fit(
-                vis_encoder = vis_encoder,
-                dataset     = self.dataset,
-                sample_idx  = total_idx,
-                device      = device,
-            )
+        vis_encoder = self.init_ssl_model(device=device)
         
         # get labeled and unlabeled normalized features using representation model
         ulb_normalized_embed = self.extract_outputs(

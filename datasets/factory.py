@@ -222,9 +222,9 @@ def create_dataset(
     testset = set_classes(dataset=testset, dataname=dataname)
     
     # set dataname
-    trainset.dataname = dataname.lower()
-    validset.dataname = dataname.lower()
-    testset.dataname = dataname.lower()
+    trainset.dataname = dataname
+    validset.dataname = dataname
+    testset.dataname = dataname
     
     # set img size
     trainset.img_size = (img_size, img_size)

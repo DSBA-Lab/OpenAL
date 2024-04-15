@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from query_strategies.metric_learning import create_metric_learning, MetricModel
+from metric_learning import MetricModel, create_metric_learning
 from .strategy import Strategy
 from .sampler import SubsetSequentialSampler
 from .utils import torch_seed, get_target_from_dataset
@@ -29,64 +29,77 @@ class CCAL(Strategy):
         
         self.savedir = savedir
         self.seed = seed
-                
+    
+        self.accelerator = accelerator
+        
+        # semantic parameters
+        self.k = k
+        self.t = t
+    
         # contrastive-learning for distinctive features
-        distinctive_encoder = MetricModel(
+        self.distinctive_encoder = MetricModel(
             modelname   = distinctive_params['modelname'], 
             pretrained  = distinctive_params['pretrained'],
             simclr_dim  = distinctive_params['simclr_dim'],
             **distinctive_params.get('model_params', {})
         )
-        self.distinctive_cl = create_metric_learning(
-            method_name      = 'SimCLRCSI',
-            vis_encoder      = distinctive_encoder,
-            dataname         = self.dataset.dataname,
-            img_size         = self.dataset.img_size,
-            sim_lambda       = distinctive_params['sim_lambda'],
-            epochs           = distinctive_params['epochs'],
-            batch_size       = distinctive_params['batch_size'], 
-            num_workers      = distinctive_params['num_workers'],
-            shift_trans_type = distinctive_params['shift_trans_type'], 
-            opt_name         = distinctive_params['opt_name'], 
-            opt_params       = distinctive_params.get('opt_params', {}),
-            lr               = distinctive_params['lr'], 
-            sched_name       = distinctive_params['sched_name'],
-            sched_params     = distinctive_params['sched_params'],
-            warmup_params    = distinctive_params.get('warmup_params', {}),
-            savepath         = os.path.join(savedir, 'distinctive_model.pt'), 
-            accelerator      = accelerator,
-            seed             = seed, 
+        
+        self.distinctive_checkpoint_path = os.path.join(
+            distinctive_params['checkpoint_path'], 
+            self.dataset.dataname, 
+            f"{distinctive_params['modelname']}_SimCLRCSI.pt"
         )
         
+        self.distinctive_cl = create_metric_learning(
+            method_name = 'SimCLRCSI',
+            savepath    = self.distinctive_checkpoint_path, 
+            accelerator = accelerator,
+            seed        = seed, 
+            dataname    = self.dataset,
+            img_size    = self.dataset.img_size,
+            ssl_params  = distinctive_params['params']
+        )
+    
         # contrastive-learning for semantic features
-        semantic_encoder = MetricModel(
+        self.semantic_encoder = MetricModel(
             modelname   = semantic_params['modelname'], 
             pretrained  = semantic_params['pretrained'],
             simclr_dim  = semantic_params['simclr_dim'],
             **semantic_params.get('model_params', {})
         )
-        self.semantic_cl = create_metric_learning(
-            method_name      = 'SimCLR',
-            vis_encoder      = semantic_encoder,
-            dataname         = self.dataset.dataname,
-            img_size         = self.dataset.img_size,
-            epochs           = semantic_params['epochs'],
-            batch_size       = semantic_params['batch_size'], 
-            num_workers      = semantic_params['num_workers'],
-            opt_name         = semantic_params['opt_name'], 
-            opt_params       = semantic_params.get('opt_params', {}),
-            lr               = semantic_params['lr'], 
-            sched_name       = semantic_params['sched_name'],
-            sched_params     = semantic_params['sched_params'],
-            warmup_params    = semantic_params.get('warmup_params', {}),
-            savepath         = os.path.join(savedir, 'semantic_model.pt'), 
-            accelerator      = accelerator,
-            seed             = seed, 
+        
+        self.semantic_checkpoint_path = os.path.join(
+            semantic_params['checkpoint_path'], 
+            self.dataset.dataname, 
+            f"{semantic_params['modelname']}_SimCLR.pt"
         )
         
-        # semantic parameters
-        self.k = k
-        self.t = t
+        self.semantic_cl = create_metric_learning(
+            method_name = 'SimCLR',
+            savepath    = self.semantic_checkpoint_path, 
+            accelerator = accelerator,
+            seed        = seed, 
+            dataname    = self.dataset,
+            img_size    = self.dataset.img_size
+        )
+    
+    def init_ssl_model(self, device):
+        distinctive_encoder = deepcopy(self.distinctive_encoder)
+        semantic_encoder = deepcopy(self.semantic_encoder)
+        
+        distinctive_encoder.load_state_dict(torch.load(self.distinctive_checkpoint_path))
+        semantic_encoder.load_state_dict(torch.load(self.semantic_checkpoint_path))
+        
+        if self.accelerator != None:
+            distinctive_encoder, semantic_encoder = self.accelerator.prepare(distinctive_encoder, semantic_encoder)
+        else:
+            distinctive_encoder.to(device)
+            semantic_encoder.to(device)
+            
+        distinctive_encoder.eval()
+        semantic_encoder.eval()
+            
+        return distinctive_encoder, semantic_encoder
     
     def query(self, model, **kwargs) -> np.ndarray:
         # device
@@ -95,30 +108,9 @@ class CCAL(Strategy):
         # idx
         labeled_idx = np.where(self.is_labeled==True)[0]
         unlabeled_idx = np.where(self.is_unlabeled==True)[0]
-        total_idx = np.r_[
-            np.where(self.is_labeled==True)[0], 
-            np.where(self.is_unlabeled==True)[0], 
-            np.where(self.is_ood==True)[0]
-        ]
         
         # fit representation model using CSI
-        distinctive_encoder = self.distinctive_cl.init_model(device=device)
-        if not os.path.isfile(self.distinctive_cl.savepath):
-            self.distinctive_cl.fit(
-                vis_encoder = distinctive_encoder,
-                dataset     = self.dataset,
-                sample_idx  = total_idx,
-                device      = device,
-            )
-            
-        semantic_encoder = self.semantic_cl.init_model(device=device)
-        if not os.path.isfile(self.semantic_cl.savepath):
-            self.semantic_cl.fit(
-                vis_encoder = semantic_encoder,
-                dataset     = self.dataset,
-                sample_idx  = total_idx,
-                device      = device,
-            )
+        distinctive_encoder, semantic_encoder = self.init_ssl_model(device=device)
         
         # get labeled and unlabeled normalized features using distinctive representation model
         # ulb_noramlized_embed_dis ( k_shift x N_ulb x d )
