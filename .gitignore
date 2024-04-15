@@ -135,5 +135,5 @@ figure.ipynb
 results*/
 saved_files/
 *.ipynb
-*.sh
 assets/
+checkpoints/
