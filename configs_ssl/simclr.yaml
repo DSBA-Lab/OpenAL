@@ -24,7 +24,7 @@ SCHEDULER:
     multiplier: 10.0
     warmup: 10
 TRAIN:
-  epochs: 2
+  epochs: 1000
   grad_accum_steps: 1
   mixed_precision: fp16
   log_interval: 10

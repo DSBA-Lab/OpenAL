@@ -11,7 +11,7 @@ gpu_id=$9
 let n_end=$cost*$cycle
 
 CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
-    default_cfg=./configs/benchmark/default_setting.yaml \
+    default_cfg=./configs/default_setting.yaml \
     openset_cfg=./configs_openset/ccal.yaml \
     DEFAULT.exp_name=ood$ood_ratio-id$id_ratio \
     DATASET.name=$ds \
