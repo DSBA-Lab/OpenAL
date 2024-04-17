@@ -62,7 +62,12 @@ def parser():
         if hasattr(cfg.AL, 'id_ratio'):
             cfg.AL.nb_id_class = int(cfg.DATASET.num_classes*cfg.AL.id_ratio)
             cfg.DATASET.num_classes = cfg.AL.nb_id_class
-          
+    
+    # change num_classes to nb_id_class for full supervised learning
+    if hasattr(cfg.DATASET, 'id_ratio'):
+        cfg.DATASET.nb_id_class = int(cfg.DATASET.num_classes*cfg.DATASET.id_ratio)
+        cfg.DATASET.num_classes = cfg.DATASET.nb_id_class
+        
     print(OmegaConf.to_yaml(cfg))
     
     return cfg  

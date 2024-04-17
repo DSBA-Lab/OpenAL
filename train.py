@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, SubsetRandomSampler
 from collections import OrderedDict
 from accelerate import Accelerator
 
@@ -160,7 +160,7 @@ def get_metrics(metrics: dict, metrics_log: str, targets: list, scores: list, pr
 
 
 
-def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, query_model = None, **train_params) -> dict:   
+def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, **train_params) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     acc_m = AverageMeter()
@@ -173,8 +173,11 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     end = time.time()
     
     model.train()
-    for k in optimizer.keys():
-        optimizer[k].zero_grad()
+    if isinstance(optimizer, dict):
+        for k in optimizer.keys():
+            optimizer[k].zero_grad()
+    else:
+        optimizer.zero_grad()
     
     steps_per_epoch = train_params.get('steps_per_epoch') if train_params.get('steps_per_epoch') else len(dataloader)
     
@@ -184,23 +187,18 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             data_time_m.update(time.time() - end)
             
             # predict
-            if query_model != None:
-                with torch.no_grad():
-                    cls_features = query_model.forward_features(inputs)[:,0]
-                outputs = model(inputs, cls_features=cls_features)
+            if getattr(model, 'LPM', False): # learning loss
+                outputs = {}
+                outputs['logits'] = model.backbone(inputs)
+                
+                # detach LPM for learning loss
+                if train_params.get('is_detach_lpm', False):
+                    for k, v in model.layer_outputs.items():
+                        model.layer_outputs[k] = v.detach()
+                
+                outputs['loss_pred'] = model.LPM(model.layer_outputs)
             else:
-                if getattr(model, 'LPM', False): # learning loss
-                    outputs = {}
-                    outputs['logits'] = model.backbone(inputs)
-                    
-                    # detach LPM for learning loss
-                    if train_params.get('is_detach_lpm', False):
-                        for k, v in model.layer_outputs.items():
-                            model.layer_outputs[k] = v.detach()
-                    
-                    outputs['loss_pred'] = model.LPM(model.layer_outputs)
-                else:
-                    outputs = model(inputs)        
+                outputs = model(inputs)        
 
             # calc loss
             if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
@@ -210,9 +208,14 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             accelerator.backward(loss)
 
             # loss update
-            for k in optimizer.keys():
-                optimizer[k].step()
-                optimizer[k].zero_grad()
+            if isinstance(optimizer, dict):
+                for k in optimizer.keys():
+                    optimizer[k].step()
+                    optimizer[k].zero_grad()
+            else:
+                optimizer.step()
+                optimizer.zero_grad()
+                
             losses_m.update(loss.item())
 
             # accuracy 
@@ -230,6 +233,10 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
         
             if (step+1) % accelerator.gradient_accumulation_steps == 0:
                 if ((step+1) // accelerator.gradient_accumulation_steps) % log_interval == 0: 
+                    if isinstance(optimizer, dict):
+                        lr_current = optimizer['backbone'].param_groups[0]['lr']
+                    else:
+                        lr_current = optimizer.param_groups[0]['lr']
                     _logger.info('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
                                 'Acc: {acc.avg:.3%} '
                                 'LR: {lr:.3e} '
@@ -239,7 +246,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
                                 steps_per_epoch//accelerator.gradient_accumulation_steps, 
                                 loss       = losses_m, 
                                 acc        = acc_m, 
-                                lr         = optimizer['backbone'].param_groups[0]['lr'],
+                                lr         = lr_current,
                                 batch_time = batch_time_m,
                                 rate       = inputs.size(0) / batch_time_m.val,
                                 rate_avg   = inputs.size(0) / batch_time_m.avg,
@@ -272,7 +279,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     return metrics
 
         
-def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False, query_model = None) -> dict:
+def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False) -> dict:
     correct = 0
     total = 0
     total_loss = 0
@@ -285,11 +292,7 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
     with torch.no_grad():
         for idx, (inputs, targets) in enumerate(dataloader):
             # predict
-            if query_model != None:
-                cls_features = query_model.forward_features(inputs)[:,0]
-                outputs = model(inputs, cls_features=cls_features)
-            else:
-                outputs = model(inputs)
+            outputs = model(inputs)
             
             # loss
             if criterion.__class__.__name__ == 'CrossEntropyLoss' and isinstance(outputs, dict):
@@ -333,7 +336,7 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
                 
 def fit(
     model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, query_model = None, seed: int = 0, **train_params
+    epochs: int, use_wandb: bool, log_interval: int, seed: int = 0, **train_params
 ) -> None:
 
     step = 0
@@ -349,7 +352,6 @@ def fit(
         
         train_metrics = train(
             model        = model, 
-            query_model  = query_model,
             dataloader   = trainloader, 
             criterion    = criterion, 
             optimizer    = optimizer, 
@@ -361,7 +363,6 @@ def fit(
         if testloader != None:
             eval_metrics = test(
                 model        = model, 
-                query_model  = query_model,
                 dataloader   = testloader, 
                 criterion    = criterion, 
                 log_interval = log_interval,
@@ -382,59 +383,97 @@ def fit(
         
         # update scheduler  
         if scheduler:
-            for k in scheduler.keys():
-                scheduler[k].step()
-        
+            if isinstance(scheduler, dict):
+                for k in scheduler.keys():
+                    scheduler[k].step()
+            else:
+                scheduler.step()
 
-def full_run(
-    cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
-    
-    # logging
-    _logger.info('Full Supervised Learning, [total samples] {}'.format(len(trainset)))
+def full_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):        
 
-    # define train dataloader
-    trainloader = DataLoader(
-        dataset     = trainset,
-        batch_size  = cfg.DATASET.batch_size,
-        shuffle     = True,
-        num_workers = cfg.DATASET.num_workers,
-        pin_memory  = True
-    )
+    # id_ratio
+    if cfg.DATASET.get('id_ratio', False):
+        # create ID and OOD targets
+        trainset, id_targets = create_id_ood_targets(
+            dataset     = trainset,
+            nb_id_class = cfg.DATASET.nb_id_class,
+            seed        = cfg.DEFAULT.seed
+        )
+        validset, id_targets_check = create_id_ood_targets(
+            dataset     = validset,
+            nb_id_class = cfg.DATASET.nb_id_class,
+            seed        = cfg.DEFAULT.seed
+        )
+        assert sum(id_targets == id_targets_check) == cfg.DATASET.nb_id_class, "ID targets are not matched"
+        testset, id_targets_check = create_id_ood_targets(
+            dataset     = testset,
+            nb_id_class = cfg.DATASET.nb_id_class,
+            seed        = cfg.DEFAULT.seed
+        )
+        assert sum(id_targets == id_targets_check) == cfg.DATASET.nb_id_class, "ID targets are not matched"
     
-    if cfg.TRAIN.get('params'):
-        if cfg.TRAIN.params.get('steps_per_epoch'):
+        # define dataloader
+        train_idx = [i for i in range(len(trainset.targets)) if trainset.targets[i] < len(id_targets)]
+        if cfg.TRAIN.get('params', {}).get('steps_per_epoch', False):
+            trainset = TrainIterableDataset(
+                dataset    = trainset,
+                sample_idx = train_idx
+            )
+            
             trainloader = DataLoader(
-                dataset     = TrainIterableDataset(dataset=trainset),
+                dataset     = trainset,
                 batch_size  = cfg.DATASET.batch_size,
-                num_workers = cfg.DATASET.num_workers,
-                pin_memory  = True
-            )   
-    
-    trainloader = DataLoader(
-        dataset     = trainset,
-        batch_size  = cfg.DATASET.batch_size,
-        shuffle     = True,
-        num_workers = cfg.DATASET.num_workers
-    )
-    
-    # define test dataloader
-    validloader = DataLoader(
-        dataset     = validset,
-        batch_size  = cfg.DATASET.test_batch_size,
-        shuffle     = False,
-        num_workers = cfg.DATASET.num_workers
-    )
-    
-    # define test dataloader
-    testloader = DataLoader(
-        dataset     = testset,
-        batch_size  = cfg.DATASET.test_batch_size,
-        shuffle     = False,
-        num_workers = cfg.DATASET.num_workers
-    )
+                num_workers = cfg.DATASET.num_workers
+            )
+        else:
+            trainloader = DataLoader(
+                dataset     = trainset,
+                batch_size  = cfg.DATASET.batch_size,
+                sampler     = SubsetRandomSampler(indices=train_idx),
+                num_workers = cfg.DATASET.num_workers
+            )
+        
+        validloader = create_id_testloader(
+            dataset     = validset,
+            id_targets  = id_targets,
+            batch_size  = cfg.DATASET.test_batch_size,
+            num_workers = cfg.DATASET.num_workers    
+        )
+        testloader = create_id_testloader(
+            dataset     = testset,
+            id_targets  = id_targets,
+            batch_size  = cfg.DATASET.test_batch_size,
+            num_workers = cfg.DATASET.num_workers    
+        )
+
+    else:
+        if cfg.TRAIN.get('params', {}).get('steps_per_epoch', False):
+            trainset = TrainIterableDataset(dataset=trainset)
+            
+        # define dataloader
+        trainloader = DataLoader(
+            dataset     = trainset,
+            batch_size  = cfg.DATASET.batch_size,
+            shuffle     = True,
+            num_workers = cfg.DATASET.num_workers
+        )
+        
+        validloader = DataLoader(
+            dataset     = validset,
+            batch_size  = cfg.DATASET.test_batch_size,
+            shuffle     = False,
+            num_workers = cfg.DATASET.num_workers
+        )
+        
+        testloader = DataLoader(
+            dataset     = testset,
+            batch_size  = cfg.DATASET.test_batch_size,
+            shuffle     = False,
+            num_workers = cfg.DATASET.num_workers
+        )
 
     # load model
-    query_model, model = create_model(
+    _, model = create_model(
         modelname   = cfg.MODEL.name, 
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained,
@@ -445,7 +484,7 @@ def full_run(
     # optimizer
     optimizer = create_optimizer(
         opt_name   = cfg.OPTIMIZER.name, 
-        model      = model.prompt if cfg.MODEL.name == 'VPTAL' else model, 
+        model      = model, 
         lr         = cfg.OPTIMIZER.lr, 
         opt_params = cfg.OPTIMIZER.get('params',{})
     )
@@ -463,14 +502,13 @@ def full_run(
     criterion = create_criterion(name=cfg.LOSS.name, params=cfg.LOSS.get('params', {}))
     
     # prepraring accelerator
-    model, query_model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
-        model, query_model, optimizer, trainloader, validloader, testloader, scheduler
+    model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+        model, optimizer, trainloader, validloader, testloader, scheduler
     )
 
     # fitting model
     fit(
         model        = model, 
-        query_model  = query_model,
         trainloader  = trainloader, 
         testloader   = validloader, 
         criterion    = criterion, 
@@ -480,7 +518,8 @@ def full_run(
         epochs       = cfg.TRAIN.epochs, 
         use_wandb    = cfg.TRAIN.wandb.use,
         log_interval = cfg.TRAIN.log_interval,
-        seed         = cfg.DEFAULT.seed
+        seed         = cfg.DEFAULT.seed,
+        **cfg.TRAIN.get('params', {})
     )
     
     # save model
@@ -495,7 +534,6 @@ def full_run(
     
     eval_results = test(
         model            = model, 
-        query_model      = query_model,
         dataloader       = validloader, 
         criterion        = criterion, 
         log_interval     = cfg.TRAIN.log_interval,
@@ -513,7 +551,6 @@ def full_run(
 
     # save results
     json.dump(eval_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}_valid.json'), 'w'), indent='\t')
-    
 
     # ====================
     # test results
@@ -521,7 +558,6 @@ def full_run(
     
     test_results = test(
         model            = model, 
-        query_model      = query_model,
         dataloader       = testloader, 
         criterion        = criterion, 
         log_interval     = cfg.TRAIN.log_interval,
@@ -565,7 +601,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
     )
     
     # load model
-    query_model, model = create_model(
+    _, model = create_model(
         modelname   = cfg.MODEL.name,
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained, 
@@ -695,8 +731,8 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         )
         
         # prepraring accelerator
-        model, query_model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
-            model, query_model, optimizer, trainloader, validloader, testloader, scheduler
+        model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
+            model, optimizer, trainloader, validloader, testloader, scheduler
         )
         
         # initialize wandb
@@ -706,7 +742,6 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         # fitting model
         fit(
             model        = model, 
-            query_model  = query_model, 
             trainloader  = trainloader, 
             testloader   = None, 
             criterion    = strategy.loss_fn, 
@@ -738,7 +773,6 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         if validset != testset:
             eval_results = test(
                 model            = model, 
-                query_model      = query_model,
                 dataloader       = validloader, 
                 criterion        = strategy.loss_fn, 
                 log_interval     = cfg.TRAIN.log_interval,
@@ -775,7 +809,6 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         
         test_results = test(
             model            = model, 
-            query_model      = query_model,
             dataloader       = testloader, 
             criterion        = strategy.loss_fn, 
             log_interval     = cfg.TRAIN.log_interval,
