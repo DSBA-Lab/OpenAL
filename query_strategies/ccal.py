@@ -7,10 +7,11 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from metric_learning import MetricModel, create_metric_learning
-from .strategy import Strategy
-from .sampler import SubsetSequentialSampler
-from .utils import torch_seed, get_target_from_dataset
+from metric_learning.models import MetricModel
+from metric_learning.factory import create_metric_learning
+from query_strategies.strategy import Strategy
+from query_strategies.sampler import SubsetSequentialSampler
+from query_strategies.utils import torch_seed, get_target_from_dataset
 
 class CCAL(Strategy):
     def __init__(
@@ -47,7 +48,9 @@ class CCAL(Strategy):
         self.distinctive_checkpoint_path = os.path.join(
             distinctive_params['checkpoint_path'], 
             self.dataset.dataname, 
-            f"{distinctive_params['modelname']}_SimCLRCSI.pt"
+            "SimCLRCSI",
+            distinctive_params['modelname'],
+            "ckp.pt"
         )
         
         self.distinctive_cl = create_metric_learning(
@@ -71,7 +74,9 @@ class CCAL(Strategy):
         self.semantic_checkpoint_path = os.path.join(
             semantic_params['checkpoint_path'], 
             self.dataset.dataname, 
-            f"{semantic_params['modelname']}_SimCLR.pt"
+            "SimCLR",
+            semantic_params['modelname'],
+            "ckp.pt"
         )
         
         self.semantic_cl = create_metric_learning(

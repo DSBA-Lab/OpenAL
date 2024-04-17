@@ -11,7 +11,8 @@ from omegaconf import OmegaConf
 from arguments import parser
 from datasets import create_dataset
 from log import setup_default_logging
-from metric_learning import create_metric_learning, MetricModel
+from metric_learning.factory import create_metric_learning
+from metric_learning.models import MetricModel
 from query_strategies import torch_seed
 from query_strategies.scheds import create_scheduler
 from query_strategies.optims import create_optimizer
@@ -48,8 +49,8 @@ def run(cfg):
     )
     
     # make save directory
-    savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name)
-    savepath = os.path.join(savedir, f'{cfg.MODEL.name}_{cfg.SSL.method}.pt')
+    savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.SSL.method, cfg.MODEL.name)
+    savepath = os.path.join(savedir, 'ckp.pt')
     
     assert not os.path.isfile(savepath), f'{savepath} already exists'
     os.makedirs(savedir, exist_ok=True)

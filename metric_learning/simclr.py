@@ -10,9 +10,9 @@ import torch.nn.functional as F
 
 from tqdm.auto import tqdm
 
-from .factory import MetricLearning
-from .losses import nt_xent_loss
-from .transform_layers import get_simclr_augmentation, HorizontalFlipLayer, Rotation, CutPerm
+from metric_learning.factory import MetricLearning
+from metric_learning.losses import nt_xent_loss
+from metric_learning.transform_layers import get_simclr_augmentation, HorizontalFlipLayer, Rotation, CutPerm
 
 class SimCLRCSI(MetricLearning):
     def __init__(

@@ -13,9 +13,9 @@ from metric_learning.models import MetricModel
 from query_strategies.learning_loss import LearningLoss
 from query_strategies.scheds import create_scheduler
 from query_strategies.optims import create_optimizer
-from .factory import create_query_strategy
-from .strategy import Strategy
-from .utils import torch_seed, get_target_from_dataset
+from query_strategies.factory import create_query_strategy
+from query_strategies.strategy import Strategy
+from query_strategies.utils import torch_seed, get_target_from_dataset
 
 class MQNet(Strategy):
     def __init__(
@@ -72,7 +72,9 @@ class MQNet(Strategy):
         self.checkpoint_path = os.path.join(
             metric_params['checkpoint_path'], 
             self.dataset.dataname, 
-            f"{metric_params['modelname']}_SimCLRCSI.pt"
+            'SimCLRCSI',
+            f"{metric_params['modelname']}",
+            "ckp.pt"
         )
 
     def init_ssl_model(self, device):

@@ -1,9 +1,6 @@
 import torch
 from tqdm.auto import tqdm
 
-from query_strategies.utils import torch_seed
-
-
 def create_metric_learning(
     method_name, 
     savepath: str, 
@@ -36,8 +33,6 @@ class MetricLearning:
         self.savepath = savepath
         
     def fit(self, epochs: int, vis_encoder, dataloader, optimizer, scheduler, device: str, **kwargs):
-        torch_seed(self.seed)
-        
         if self.accelerator != None:
             vis_encoder, dataloader, optimizer, scheduler = self.accelerator.prepare(
                 vis_encoder, dataloader, optimizer, scheduler
