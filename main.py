@@ -75,7 +75,7 @@ def run(cfg):
             )
     else:
         # make save directory
-        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 'Full', cfg.DEFAULT.exp_name)
+        savedir = os.path.join(cfg.DEFAULT.savedir, cfg.DATASET.name, cfg.MODEL.name, 'Full', cfg.DEFAULT.exp_name, f'seed{cfg.DEFAULT.seed}')
         
         assert not os.path.isdir(savedir), f'{savedir} already exists'
         os.makedirs(savedir)
