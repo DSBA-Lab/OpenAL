@@ -129,8 +129,27 @@ class MQNet(Strategy):
         select_idx = unlabeled_idx[query_rank]
         
         # meta-learning for next round
+        self.meta_fit(
+            model                  = model,
+            labeled_idx            = labeled_idx, 
+            select_idx             = select_idx, 
+            informativeness_scores = informativeness_scores[query_rank],
+            device                 = device
+        )
+        
+        return select_idx
+    
+    def meta_fit(self, model, labeled_idx: np.ndarray, select_idx: np.ndarray, informativeness_scores: torch.Tensor, device: str):
         targets = get_target_from_dataset(self.dataset)
-        inputs = torch.stack([informativeness_scores, purity_scores], dim=1)[query_rank]
+        
+        purity_scores = self.get_purity_score(
+            unlabeled_idx = select_idx, 
+            labeled_idx   = labeled_idx, 
+            device        = device
+        )
+        purity_scores = self.standardize(scores=purity_scores)
+        
+        inputs = torch.stack([informativeness_scores, purity_scores], dim=1)
         self.meta_learning.fit(
             model     = model,
             X         = self.dataset.data[select_idx],
@@ -139,8 +158,7 @@ class MQNet(Strategy):
             transform = self.dataset.transform,
             device    = device
         )
-        
-        return select_idx
+    
     
     def get_meta_scores(self, meta_inputs: torch.FloatTensor, device: str):
         if self.meta_learning.current_round == 0:
