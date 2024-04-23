@@ -11,7 +11,7 @@ AL:
       num_workers: 4
       margin: 1.0
       opt_name: SGD
-      lr: 0.01
+      lr: 0.001
     metric_params:
       modelname: resnet18
       pretrained: false
