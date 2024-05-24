@@ -6,7 +6,6 @@ from query_strategies.entropy_sampling import EntropySampling
 from query_strategies.random import RandomSampling
 from query_strategies.bald import BALD 
 from query_strategies.badge import BADGE
-from query_strategies.pt4al import PT4AL, PT4LeastConfidence, PT4MarginSampling, PT4EntropySampling
 from query_strategies.meanstd_sampling import MeanSTDSampling
 from query_strategies.varratio_sampling import VarRatioSampling
 from query_strategies.kcenter_greedy import KCenterGreedy, KCenterGreedyCB
