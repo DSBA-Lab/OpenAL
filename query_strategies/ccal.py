@@ -269,7 +269,7 @@ class CCAL(Strategy):
         torch_seed(self.seed)
         
         dataset = deepcopy(self.dataset)
-        dataset.transform = self.test_transform
+        dataset.transform = self.transform
         
         dataloader = DataLoader(
             dataset     = dataset, 

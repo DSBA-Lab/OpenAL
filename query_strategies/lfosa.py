@@ -135,7 +135,7 @@ class LfOSA(Strategy):
         
     def get_mav_and_prediction(self, detector, unlabeled_idx, device: str):
         dataset = deepcopy(self.dataset)
-        dataset.transform = self.test_transform
+        dataset.transform = self.transform
         
         # define sampler
         sampler = SubsetSequentialSampler(indices=unlabeled_idx)
@@ -250,7 +250,7 @@ class Detector:
     ):
         
         self.accelerator = accelerator
-        _, self.detector = create_model(modelname=modelname, num_classes=num_classes)
+        self.detector = create_model(modelname=modelname, num_classes=num_classes)
         
         self.epochs = epochs
         self.steps_per_epoch = steps_per_epoch

@@ -1,6 +1,0 @@
-AL:
-  strategy: PT4EntropySampling
-  params:
-    batch_path: ./results/batch/rotation/CIFAR10/resnet18/epoch120_multistep/batch.csv
-  init:
-    method: batch_select

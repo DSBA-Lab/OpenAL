@@ -20,7 +20,6 @@ from query_strategies import create_query_strategy, create_is_labeled, \
                              create_id_testloader, torch_seed, \
                              create_scheduler, create_optimizer
 from query_strategies.utils import TrainIterableDataset
-from query_strategies.prompt_ensemble import PromptEnsemble
 from models import create_model
 from query_strategies.utils import NoIndent, MyEncoder
 from omegaconf import OmegaConf
@@ -44,33 +43,6 @@ class AverageMeter:
         self.count += n
         self.avg = self.sum / self.count
 
-
-class PromptLoss(torch.nn.CrossEntropyLoss):
-    def __init__(self, loss_weight: float = 1., weight=None, size_average=None, ignore_index=-100, reduce=None, reduction: str = 'mean', label_smoothing: float = 0.0):
-        super(PromptLoss, self).__init__(
-            weight          = weight, 
-            size_average    = size_average, 
-            ignore_index    = ignore_index, 
-            reduce          = reduce, 
-            reduction       = reduction, 
-            label_smoothing = label_smoothing
-        )
-        
-        self.loss_weight = loss_weight
-        
-    def forward(self, input: torch.Tensor, target: torch.Tensor):
-        ce_loss = torch.nn.functional.cross_entropy(input['logits'], target, weight=self.weight,
-                                                        ignore_index=self.ignore_index, reduction=self.reduction,
-                                                        label_smoothing=self.label_smoothing)
-        
-        prompt_ce_loss = torch.nn.functional.cross_entropy(input['prompt_logits'], target, weight=self.weight,
-                                                     ignore_index=self.ignore_index, reduction=self.reduction,
-                                                     label_smoothing=self.label_smoothing)
-        
-        loss = ce_loss + self.loss_weight * prompt_ce_loss
-        
-        return loss
-
 def accuracy(outputs, targets, return_correct=False):
     # calculate accuracy
     preds = outputs.argmax(dim=1) 
@@ -85,8 +57,6 @@ def accuracy(outputs, targets, return_correct=False):
 def create_criterion(name, params):
     if name == 'CrossEntropyLoss':
         return torch.nn.CrossEntropyLoss(**params)
-    elif name == 'PromptLoss':
-        return PromptLoss(**params)
 
 def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_class: bool = False) -> dict:
     # softmax
@@ -447,16 +417,20 @@ def full_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: 
         )
 
     else:
-        if cfg.TRAIN.get('params', {}).get('steps_per_epoch', False):
-            trainset = TrainIterableDataset(dataset=trainset)
-            
         # define dataloader
-        trainloader = DataLoader(
-            dataset     = trainset,
-            batch_size  = cfg.DATASET.batch_size,
-            shuffle     = True,
-            num_workers = cfg.DATASET.num_workers
-        )
+        if cfg.TRAIN.get('params', {}).get('steps_per_epoch', False):
+            trainloader = DataLoader(
+                dataset     = TrainIterableDataset(dataset=trainset),
+                batch_size  = cfg.DATASET.batch_size,
+                num_workers = cfg.DATASET.num_workers
+            )
+        else:
+            trainloader = DataLoader(
+                dataset     = trainset,
+                batch_size  = cfg.DATASET.batch_size,
+                shuffle     = True,
+                num_workers = cfg.DATASET.num_workers
+            )
         
         validloader = DataLoader(
             dataset     = validset,
@@ -473,7 +447,7 @@ def full_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: 
         )
 
     # load model
-    _, model = create_model(
+    model = create_model(
         modelname   = cfg.MODEL.name, 
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained,
@@ -523,10 +497,7 @@ def full_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: 
     )
     
     # save model
-    if cfg.MODEL.name == 'VPTAL':
-        torch.save(model.prompt.state_dict(), os.path.join(savedir, f"prompt_seed{cfg.DEFAULT.seed}.pt"))
-    else:
-        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}.pt"))
+    torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}.pt"))
 
     # ====================
     # validation results
@@ -601,7 +572,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
     )
     
     # load model
-    _, model = create_model(
+    model = create_model(
         modelname   = cfg.MODEL.name,
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained, 
@@ -614,7 +585,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         strategy_name    = cfg.AL.strategy, 
         model            = model,
         dataset          = trainset, 
-        test_transform   = testset.transform,
+        transform        = testset.transform,
         sampler_name     = cfg.DATASET.sampler_name,
         is_labeled       = is_labeled, 
         n_query          = cfg.AL.n_query, 
@@ -622,10 +593,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         batch_size       = cfg.DATASET.batch_size, 
         num_workers      = cfg.DATASET.num_workers,
         steps_per_epoch  = cfg.TRAIN.params.get('steps_per_epoch', 0),
-        tta_agg          = cfg.AL.get('tta_agg', None),
-        tta_params       = cfg.AL.get('tta_params', None),
         interval_type    = cfg.AL.get('interval_type', 'top'),
-        resampler_params = cfg.AL.get('resampler_params', None),
         **cfg.AL.get('params', {})
     )
     
@@ -658,18 +626,10 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         
         if r != 0:    
             # query sampling    
-            query_params = {}
-            if cfg.AL.strategy == 'PromptEnsemble':
-                query_params = {'r': r, 'seed': cfg.DEFAULT.seed, 'savedir': savedir}
-                
-            query_idx = strategy.query(model, **query_params)
+            query_idx = strategy.query(model)
             
             # update query
             strategy.update(query_idx)
-            
-            # query_idx resampling
-            if strategy.use_resampler:
-                strategy.resampler(model)
             
             # get trainloader
             del trainloader
@@ -756,15 +716,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         )
         
         # save model
-        if cfg.MODEL.name == 'VPTAL':
-            torch.save(model.prompt.state_dict(), os.path.join(savedir, f"prompt_seed{cfg.DEFAULT.seed}-round{r}.pt"))
-        else:
-            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
-
-        # aggretate previous weights
-        if cfg.AL.strategy == 'PromptEnsemble' and cfg.TRAIN.get('ensemble', False):
-            prompt_weights = PromptEnsemble.weights_average(r=r+1, seed=cfg.DEFAULT.seed, savedir=savedir, weights=strategy.weights)
-            model.prompt.load_state_dict(prompt_weights)
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
 
         # ====================
         # validation results
@@ -895,7 +847,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
     )
     
     # load model
-    _, model = create_model(
+    model = create_model(
         modelname   = cfg.MODEL.name,
         num_classes = cfg.DATASET.num_classes, 
         pretrained  = cfg.MODEL.pretrained, 
@@ -920,7 +872,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         strategy_name    = cfg.AL.strategy, 
         model            = model,
         dataset          = trainset, 
-        test_transform   = testset.transform,
+        transform        = testset.transform,
         sampler_name     = cfg.DATASET.sampler_name,
         is_labeled       = is_labeled, 
         n_query          = cfg.AL.n_query, 
@@ -967,10 +919,6 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             
             # update query
             id_query_idx = strategy.update(query_idx=query_idx)
-            
-            # query_idx resampling
-            if strategy.use_resampler:
-                strategy.resampler(model)
             
             # get trainloader
             del trainloader

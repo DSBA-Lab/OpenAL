@@ -6,7 +6,7 @@ class MetricModel(nn.Module):
     def __init__(self, modelname: str, pretrained: bool = False, simclr_dim: int = 128, **model_params):
         super().__init__()
         
-        _, self.model = create_model(modelname=modelname, pretrained=pretrained, **model_params)
+        self.model = create_model(modelname=modelname, pretrained=pretrained, **model_params)
         self.num_features = self.model.num_features
 
         self.simclr_layer = nn.Sequential(

@@ -52,10 +52,6 @@ class CLIPNAL(Strategy):
         
         # similarity
         self.use_sim = use_sim
-        if self.use_sim:
-            self.sim_method = 'sim'
-        else:
-            self.sim_method = None
     
     def init_model(self):
         return self.query_strategy.init_model()
@@ -114,16 +110,7 @@ class CLIPNAL(Strategy):
         outputs = {}
         
         # set visual encoder
-        if self.sim_method == 'metric_learning':
-            vis_encoder = self.metric_learning.init_model(device=device)
-            self.metric_learning.fit(
-                vis_encoder = vis_encoder,
-                dataset     = self.dataset,
-                sample_idx  = np.where(self.is_labeled==True)[0],
-                device      = device
-            )
-        else:
-            vis_encoder = vis_clf.image_encoder
+        vis_encoder = vis_clf.image_encoder
             
         # find best logit scale
         logit_scale = self.get_logit_scale(
@@ -131,7 +118,6 @@ class CLIPNAL(Strategy):
             vis_encoder    = vis_encoder,
             ulb_sample_idx = np.r_[np.where(self.is_labeled==True)[0], np.where(self.is_ood==True)[0]],
             lb_sample_idx  = np.where(self.is_labeled==True)[0],
-            sim_method     = self.sim_method,
             device         = device
         )
         
@@ -141,7 +127,6 @@ class CLIPNAL(Strategy):
             vis_encoder    = vis_encoder,
             ulb_sample_idx = np.where(self.is_unlabeled==True)[0],
             lb_sample_idx  = np.where(self.is_labeled==True)[0],
-            sim_method     = self.sim_method,
             device         = device
         )
         
@@ -158,13 +143,12 @@ class CLIPNAL(Strategy):
         return pred_id_ulb_idx
     
     
-    def get_logit_scale(self, vis_clf, vis_encoder, device: str, ulb_sample_idx: np.ndarray, lb_sample_idx: np.ndarray = None, sim_method: str = None):
+    def get_logit_scale(self, vis_clf, vis_encoder, device: str, ulb_sample_idx: np.ndarray, lb_sample_idx: np.ndarray = None):
         outputs = self.get_logits_and_embeds(
             vis_clf        = vis_clf,
             vis_encoder    = vis_encoder,
             ulb_sample_idx = ulb_sample_idx,
             lb_sample_idx  = lb_sample_idx,
-            sim_method     = sim_method,
             device         = device
         )
         
@@ -220,7 +204,7 @@ class CLIPNAL(Strategy):
         
     
     
-    def get_logits_and_embeds(self, vis_clf, vis_encoder, device: str, ulb_sample_idx: np.ndarray, lb_sample_idx: np.ndarray = None, sim_method: str = None):
+    def get_logits_and_embeds(self, vis_clf, vis_encoder, device: str, ulb_sample_idx: np.ndarray, lb_sample_idx: np.ndarray = None):
         
         outputs = {}
         
@@ -230,7 +214,7 @@ class CLIPNAL(Strategy):
         outputs['no_logits'] = ulb_features['no_logits']
                  
         # using similarity score per class
-        if sim_method in ['sim', 'metric_learning']:
+        if self.use_sim:
             lb_features = self.get_labeled_cls_features(vis_encoder=vis_encoder, sample_idx=lb_sample_idx, device=device)
             score_c = ulb_features['img_embed_ulb'] @ lb_features['img_embed_lb_c'].t()
             outputs['score_c'] = score_c
