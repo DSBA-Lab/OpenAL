@@ -22,12 +22,6 @@ def parser():
         cfg = OmegaConf.merge(cfg, cfg_openset)
         
         del args['openset_cfg']
-    
-    # load resampler config
-    if 'resampler_cfg' in args.keys():
-        cfg_resampler = OmegaConf.load(args.resampler_cfg)
-        cfg = OmegaConf.merge(cfg, cfg_resampler)
-        del args['resampler_cfg']
         
     if cfg.get('AL'):
         if not cfg.AL.get('strategy'):
@@ -51,13 +45,7 @@ def parser():
     # load dataset statistics
     cfg.DATASET.update(stats.datasets[cfg.DATASET.name])
     
-    if hasattr(cfg, 'AL'):
-        # update stategy configs
-        cfg = update_stategy_cfg(cfg)
-        
-        # update tta
-        cfg = update_tta_crop_size(cfg)
-        
+    if hasattr(cfg, 'AL'):        
         # change num_classes to nb_id_class for open-set AL
         if hasattr(cfg.AL, 'id_ratio'):
             cfg.AL.nb_id_class = int(cfg.DATASET.num_classes*cfg.AL.id_ratio)
@@ -92,40 +80,9 @@ def parser_ssl():
     
     return cfg
 
-def update_stategy_cfg(cfg):
-    if 'PT4' in cfg.AL.strategy:
-        cfg = _update_pt4al_cfg(cfg)
-    
-    return cfg
-
-
 def update_openset_strategy_cfg(cfg, cfg_openset):
     if cfg_openset.AL.strategy in ['CLIPNAL', 'MQNet']:
         cfg_openset.AL.openset_params.selected_strategy = cfg.AL.strategy
         
     return cfg_openset
         
-
-def _update_pt4al_cfg(cfg):
-    # for AL params
-    cfg.AL.params.n_start = cfg.AL.n_start
-    cfg.AL.params.n_end = cfg.AL.n_end
-    
-    # for AL init params
-    cfg.AL.init.params = {
-        'batch_path' : cfg.AL.params.batch_path,
-        'n_query'    : cfg.AL.n_query,
-        'n_end'      : cfg.AL.n_end
-    }
-
-    return cfg        
-
-def update_tta_crop_size(cfg):
-    if hasattr(cfg.AL, 'tta_params'):
-        for p in cfg.AL.tta_params:
-            if isinstance(p, omegaconf.dictconfig.DictConfig):
-                name = list(p)[0]
-                if name == 'FiveCrop':
-                    p[name].params.crop_size = (cfg.DATASET.img_size, cfg.DATASET.img_size)
-                    
-    return cfg

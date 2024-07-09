@@ -1,7 +1,0 @@
-AL:
-  strategy: EntropySampling
-  attr_params:
-    sampling_ratio: 0.2
-    nt_type: smoothgrad
-    nt_samples: 50
-    stdevs: 0.1

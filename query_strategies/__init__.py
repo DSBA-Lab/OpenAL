@@ -9,8 +9,6 @@ from query_strategies.badge import BADGE
 from query_strategies.meanstd_sampling import MeanSTDSampling
 from query_strategies.varratio_sampling import VarRatioSampling
 from query_strategies.kcenter_greedy import KCenterGreedy, KCenterGreedyCB
-from query_strategies.prompt_uncertainty import PromptUncertainty
-from query_strategies.prompt_ensemble import PromptEnsemble
 from query_strategies.mqnet import MQNet
 from query_strategies.clipn_al import CLIPNAL
 from query_strategies.ccal import CCAL

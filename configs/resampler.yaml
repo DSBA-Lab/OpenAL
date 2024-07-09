@@ -1,9 +1,0 @@
-AL:
-  resampler_params:
-    resampler_method: lid
-    resampler_use_fe: false
-    resampler_order: top
-    resampler_threhsold: 0.95
-    resampler_target: all
-    resampler_lid_product: false
-    resampler_k: -1

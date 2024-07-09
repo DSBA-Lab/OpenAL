@@ -1,6 +1,0 @@
-AL:
-  strategy: EntropySampling
-  tta_agg: mean
-  tta_params:
-    - HorizontalFlip
-    - FiveResizedCrop

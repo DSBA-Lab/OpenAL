@@ -16,8 +16,8 @@ class BADGE(Strategy):
         self.add_noise = add_noise
         
     def get_grad_embedding(self, model, unlabeled_idx: np.ndarray, add_noise: bool = False) -> torch.Tensor:
-        transform = transforms.Compose(self.test_transform.transforms[:-1])
-        normalize = transforms.Compose([self.test_transform.transforms[-1]])
+        transform = transforms.Compose(self.transform.transforms[:-1])
+        normalize = transforms.Compose([self.transform.transforms[-1]])
     
         # copy dataset
         dataset = deepcopy(self.dataset)

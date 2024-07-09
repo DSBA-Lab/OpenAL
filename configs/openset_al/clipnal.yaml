@@ -1,0 +1,9 @@
+AL:
+  strategy: CLIPNAL
+  ood_ratio: 0.1
+  openset_params:
+    selected_strategy: LeastConfidence
+    use_sim: true
+    model_type: ViT-B-16
+    ckp_path: ./checkpoints/clipn_atd-repeat3.pt
+    prompt_path: ./prompt_template/prompt128.txt

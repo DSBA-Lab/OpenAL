@@ -284,7 +284,7 @@ class EOAL(Strategy):
                     num_workers = self.num_workers,
                 )
         else:
-            dataset.transform = self.test_transform
+            dataset.transform = self.transform
             dataloader = DataLoader(
                 dataset     = IndexDataset(dataset=dataset),
                 batch_size  = self.train_params['batch_size'],
@@ -632,7 +632,7 @@ class Detector:
         warmup_params: dict = {}  
     ):
         
-        _, self.detector = create_model(modelname=modelname, num_classes=num_classes)
+        self.detector = create_model(modelname=modelname, num_classes=num_classes)
         
         self.epochs = epochs
         
