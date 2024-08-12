@@ -1,8 +1,8 @@
 # OpenAL
 
-**OpenAL** is Active Learning (AL) framework for classification.
+**OpenAL** is an Active Learning (AL) framework for classification.
 
-The AL is classified into two approach by samples of an unlabeled data. The AL that assumes the unlabeled data contains only in-distribution data is called *Standard AL*. If the unlabeled data includes not only in-distribution but also out-of-distribution, it is called *Open-set AL*. This framework covers *Standard AL* and *Open-set AL*. So, we named our framework as **OpenAL**.
+The AL is classified into two approaches by samples of unlabeled data. The AL that assumes the unlabeled data contains only in-distribution data is called Standard AL. If the unlabeled data includes not only in-distribution but also out-of-distribution, it is called Open-set AL. This framework covers Standard AL and Open-set AL. So, we named our framework **OpenAL**.
 
 We hope that AL research can advance further through this framework.
 
