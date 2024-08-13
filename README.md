@@ -50,7 +50,7 @@ Open-set AL | VLM | CLIPNAL | `CLIPNAL` | -
 
 ## CLIPN checkpoint
 
-We use a CLIPN checkpoint for `CLIPNAL`. The checkpoint can download in [here](https://drive.google.com/drive/folders/1qF4Pm1JSL3P0H4losPSmvldubFj91dew?usp=sharing)
+We use a CLIPN checkpoint for `CLIPNAL`. The checkpoint can download in [here](https://drive.google.com/drive/folders/1qF4Pm1JSL3P0H4losPSmvldubFj91dew?usp=sharing).
 
 # Configuration for Experiments
 
