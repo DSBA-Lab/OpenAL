@@ -46,11 +46,11 @@ Open-set AL | Contrastive Learning | CCAL | `CCAL` | ICCV 2021 - [paper](https:/
 Open-set AL | Contrastive Learning | MQNet | `MQNet` | NeurIPS 2022 - [paper](https://arxiv.org/abs/2210.07805), [official](https://github.com/kaist-dmlab/MQNet/tree/main)
 Open-set AL | OOD Detector | LfOSA | `LfOSA` | CVPR 2022 - [paper](https://arxiv.org/abs/2201.06758), [official](https://github.com/ningkp/LfOSA/tree/master)
 Open-set AL | OOD Detector | EOAL | `EOAL` | AAAI 2024 - [paper](https://arxiv.org/abs/2312.14126),  [official](https://github.com/bardisafa/EOAL)
-Open-set AL | VLM | CLIPNAL | `CLIPNAL` | -
+Open-set AL | VLM | CLIPNAL | `CLIPNAL` | arXiv 2024.8 - [paper](https://arxiv.org/abs/2408.04917), [official](https://github.com/DSBA-Lab/OpenAL)
 
 ## CLIPN checkpoint
 
-We use a CLIPN checkpoint for `CLIPNAL`. The checkpoint can download in [here](https://drive.google.com/drive/folders/1qF4Pm1JSL3P0H4losPSmvldubFj91dew?usp=sharing).
+`CLIPNAL` uses a CLIPN checkpoint shared from [CLIPN repository](https://github.com/xmed-lab/CLIPN/tree/main?tab=readme-ov-file). The checkpoint can download in [here](https://drive.google.com/drive/folders/1qF4Pm1JSL3P0H4losPSmvldubFj91dew?usp=sharing).
 
 # Configuration for Experiments
 
