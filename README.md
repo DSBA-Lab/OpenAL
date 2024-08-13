@@ -48,6 +48,9 @@ Open-set AL | OOD Detector | LfOSA | `LfOSA` | CVPR 2022 - [paper](https://arxiv
 Open-set AL | OOD Detector | EOAL | `EOAL` | AAAI 2024 - [paper](https://arxiv.org/abs/2312.14126),  [official](https://github.com/bardisafa/EOAL)
 Open-set AL | VLM | CLIPNAL | `CLIPNAL` | -
 
+## CLIPN checkpoint
+
+We use a CLIPN checkpoint for `CLIPNAL`. The checkpoint can download in [here](https://drive.google.com/drive/folders/1qF4Pm1JSL3P0H4losPSmvldubFj91dew?usp=sharing)
 
 # Configuration for Experiments
 
