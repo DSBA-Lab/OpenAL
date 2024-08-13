@@ -8,7 +8,7 @@ We hope that AL research can advance further through this framework.
 
 # Environments
 
-We build environments based on docker image `nvcr.io/nvidia/pytorch:22.12-py3`.
+We build environments based on the docker image `nvcr.io/nvidia/pytorch:22.12-py3`.
 
 ```
 python==3.8.10
@@ -54,8 +54,8 @@ Open-set AL | VLM | CLIPNAL | `CLIPNAL` | arXiv 2024.8 - [paper](https://arxiv.o
 
 # Configuration for Experiments
 
-All configuration files is in `./configs`.  
-You can modify the config files to run your experiment setttings.
+All configuration files are in `./configs`.  
+You can modify the config files to run your experiment settings.
 
 ```
 ./configs
@@ -115,7 +115,7 @@ strategy = create_query_strategy(
     num_workers      = num_workers
 )
 
-# select query using trained model on labeled samples
+# select query using the trained model on labeled samples
 query_idx = strategy.query(model)
 strategy.update(query_idx=query_idx)
 ```
