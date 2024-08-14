@@ -99,9 +99,12 @@ class TrainIterableDataset(IterableDataset):
             idx = np.random.choice(a=self.sample_idx, size=1, replace=False)[0]
             img, target = self.data[idx], self.targets[idx]
             
+            if isinstance(img, torch.Tensor):
+                img = img.numpy()
+            
             if isinstance(img, str):
                 img = Image.open(img).convert('RGB')
-            else:
+            elif isinstance(img, np.ndarray):
                 img = Image.fromarray(img)
             
             img = self.transform(img)
