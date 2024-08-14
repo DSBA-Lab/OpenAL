@@ -1,4 +1,9 @@
-from torchlars import LARS
+try:
+    from torchlars import LARS
+    is_torchlars = True
+except:
+    is_torchlars = False
+    print('To use torchlars, torchlars should be installed.')
 
 def create_optimizer(opt_name: str, model, lr: float, opt_params: dict = {}, backbone: bool = False):
     # optimizer
@@ -21,8 +26,10 @@ def _create_optimizer(opt_name: str, model, lr: float, opt_params: dict = {}):
     # optimizer
     optimizer = __import__('torch.optim', fromlist='optim').__dict__[opt_name](params=model.parameters(), lr=lr, **opt_params)
 
-    if lars_params != None:
+    if (lars_params != None) and is_torchlars:
         # apply LARS
         optimizer = LARS(optimizer, **lars_params)
+    elif is_torchlars == False:
+        print('LARS cennot be used without torchlars installation.')
             
     return optimizer

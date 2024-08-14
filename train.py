@@ -624,7 +624,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
     # run
     for r in range(nb_round+1):
         
-        if r != 0:    
+        if r != 0:
             # query sampling    
             query_idx = strategy.query(model)
             
@@ -649,7 +649,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
                 del model
                 
             accelerator.free_memory()
-            
+        
         # logging
         _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(is_labeled)))
         
@@ -695,28 +695,33 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             model, optimizer, trainloader, validloader, testloader, scheduler
         )
         
-        # initialize wandb
-        if cfg.TRAIN.wandb.use:
-            wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
+        if r == 0 and cfg.MODEL.get('ckp_round0'):
+            # logging
+            _logger.info('Load Round 0 checkpoint')
+            model.load_state_dict(torch.load(cfg.MODEL.ckp_round0))
+        else:
+            # initialize wandb
+            if cfg.TRAIN.wandb.use:
+                wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
-        # fitting model
-        fit(
-            model        = model, 
-            trainloader  = trainloader, 
-            testloader   = None, 
-            criterion    = strategy.loss_fn, 
-            optimizer    = optimizer, 
-            scheduler    = scheduler,
-            accelerator  = accelerator,
-            epochs       = cfg.TRAIN.epochs, 
-            use_wandb    = cfg.TRAIN.wandb.use,
-            log_interval = cfg.TRAIN.log_interval,
-            seed         = cfg.DEFAULT.seed,
-            **cfg.TRAIN.get('params', {})
-        )
-        
-        # save model
-        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
+            # fitting model
+            fit(
+                model        = model, 
+                trainloader  = trainloader, 
+                testloader   = None, 
+                criterion    = strategy.loss_fn, 
+                optimizer    = optimizer, 
+                scheduler    = scheduler,
+                accelerator  = accelerator,
+                epochs       = cfg.TRAIN.epochs, 
+                use_wandb    = cfg.TRAIN.wandb.use,
+                log_interval = cfg.TRAIN.log_interval,
+                seed         = cfg.DEFAULT.seed,
+                **cfg.TRAIN.get('params', {})
+            )
+            
+            # save model
+            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
 
         # ====================
         # validation results
@@ -965,7 +970,6 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             warmup_params = cfg.SCHEDULER.get('warmup_params', {})
         )
 
-
         # define test dataloader
         validloader = create_id_testloader(
             dataset     = validset,
@@ -991,28 +995,33 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         for k, sched in scheduler.items():
             scheduler[k] = accelerator.prepare(sched)
         
-        # initialize wandb
-        if cfg.TRAIN.wandb.use:
-            wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
+        if r == 0 and cfg.MODEL.get('ckp_round0'):
+            # logging
+            _logger.info('Load Round 0 checkpoint')
+            model.load_state_dict(torch.load(cfg.MODEL.ckp_round0))
+        else:
+            # initialize wandb
+            if cfg.TRAIN.wandb.use:
+                wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
-        # fitting model
-        fit(
-            model        = model, 
-            trainloader  = trainloader, 
-            testloader   = None, 
-            criterion    = strategy.loss_fn, 
-            optimizer    = optimizer, 
-            scheduler    = scheduler,
-            accelerator  = accelerator,
-            epochs       = cfg.TRAIN.epochs, 
-            use_wandb    = cfg.TRAIN.wandb.use,
-            log_interval = cfg.TRAIN.log_interval,
-            seed         = cfg.DEFAULT.seed,
-            **cfg.TRAIN.get('params', {})
-        )
-        
-        # save model
-        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
+            # fitting model
+            fit(
+                model        = model, 
+                trainloader  = trainloader, 
+                testloader   = None, 
+                criterion    = strategy.loss_fn, 
+                optimizer    = optimizer, 
+                scheduler    = scheduler,
+                accelerator  = accelerator,
+                epochs       = cfg.TRAIN.epochs, 
+                use_wandb    = cfg.TRAIN.wandb.use,
+                log_interval = cfg.TRAIN.log_interval,
+                seed         = cfg.DEFAULT.seed,
+                **cfg.TRAIN.get('params', {})
+            )
+            
+            # save model
+            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
 
         # ====================
         # validation results
