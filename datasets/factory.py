@@ -11,6 +11,24 @@ from .cifar_lt import CIFAR10LT, CIFAR100LT
 from .waterbird import WaterBird
 from .augmentation import create_augmentation
 
+def load_mnist(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
+
+    trainset = datasets.MNIST(
+        root      = datadir, 
+        train     = True, 
+        download  = True,
+        transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
+    )
+
+    testset = datasets.MNIST(
+        root      = datadir, 
+        train     = False, 
+        download  = True,
+        transform = create_augmentation(img_size=img_size, mean=mean, std=std)
+    )
+        
+    return trainset, testset
+
 def load_cifar10(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
 
     trainset = datasets.CIFAR10(
