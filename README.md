@@ -87,6 +87,8 @@ You can modify the config files to run your experiment settings.
 
 # How to Use
 
+- You can use our framework in [colab](https://colab.research.google.com/drive/1--83w5km8MlzqY8FZ77_2dkBU6I6V5jq#scrollTo=anIMBLbjfnJU). This code is a tutorial on how to use the query strategy for Standard AL and the CLIPNAL method, which is one of the Open AL methods.
+
 ## Standard AL
 
 ```python
