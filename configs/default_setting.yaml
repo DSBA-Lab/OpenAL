@@ -27,6 +27,10 @@ TRAIN:
     use: false
     entity: null
     project_name: null
+  resume:
+    use: false
+    ckp_path: null
+    round: null
   params:
     steps_per_epoch: 100
     metrics_off: false
