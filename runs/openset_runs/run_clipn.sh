@@ -16,8 +16,8 @@ do
 
     CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
         default_cfg=./configs/default_setting.yaml \
-        strategy_cfg=./configs/$s.yaml \
-        openset_cfg=./configs_openset/clipnal.yaml \
+        strategy_cfg=./configs/standard_al/$s.yaml \
+        openset_cfg=./configs/openset_al/clipnal.yaml \
         DEFAULT.exp_name=ood$ood_ratio-id$id_ratio-use_clipn \
         DATASET.name=$ds \
         TRAIN.epochs=$epochs \
@@ -31,8 +31,8 @@ do
 
     CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
         default_cfg=./configs/default_setting.yaml \
-        strategy_cfg=./configs/$s.yaml \
-        openset_cfg=./configs_openset/clipnal.yaml \
+        strategy_cfg=./configs/standard_al/$s.yaml \
+        openset_cfg=./configs/openset_al/clipnal.yaml \
         DEFAULT.exp_name=ood$ood_ratio-id$id_ratio-use_sim \
         DATASET.name=$ds \
         TRAIN.epochs=$epochs \
