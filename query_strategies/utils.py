@@ -84,8 +84,7 @@ class MyEncoder(json.JSONEncoder):
             
 class TrainIterableDataset(IterableDataset):
     def __init__(self, dataset, sample_idx: np.ndarray = [], return_index: bool = False):
-        for k, v in dataset.__dict__.items():
-            setattr(self, k, v)
+        self.dataset = dataset
         
         if len(sample_idx) == 0:
             self.sample_idx = np.arange(len(dataset))
@@ -97,17 +96,8 @@ class TrainIterableDataset(IterableDataset):
     def generate(self):
         while True:
             idx = np.random.choice(a=self.sample_idx, size=1, replace=False)[0]
-            img, target = self.data[idx], self.targets[idx]
             
-            if isinstance(img, torch.Tensor):
-                img = img.numpy()
-            
-            if isinstance(img, str):
-                img = Image.open(img).convert('RGB')
-            elif isinstance(img, np.ndarray):
-                img = Image.fromarray(img)
-            
-            img = self.transform(img)
+            img, target = self.dataset[idx]
         
             if self.return_index:
                 yield idx, img, target
