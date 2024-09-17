@@ -814,7 +814,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str):
             model = accelerator.prepare(model)
         
         # get trainloader
-        trainloader = strategy.get_trainloader(seed=cfg.DEFAULT.seed)
+        trainloader = strategy.get_trainloader()
         trainloader, validloader, testloader = accelerator.prepare(trainloader, validloader, testloader)
         
         # optimizer
@@ -1144,7 +1144,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str):
             model = accelerator.prepare(model)
         
         # get trainloader
-        trainloader = strategy.get_trainloader(seed=cfg.DEFAULT.seed)
+        trainloader = strategy.get_trainloader()
         trainloader, validloader, testloader = accelerator.prepare(trainloader, validloader, testloader)
         
         # optimizer
