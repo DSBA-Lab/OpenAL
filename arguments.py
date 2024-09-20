@@ -3,7 +3,7 @@ from omegaconf import OmegaConf
 from datasets import stats
 
 
-def parser(args: omegaconf.dictconfig.DictConfig = None):
+def parser(args: omegaconf.dictconfig.DictConfig = None, print_args: bool = True):
     if args == None:
         args = OmegaConf.from_cli()
         
@@ -58,7 +58,8 @@ def parser(args: omegaconf.dictconfig.DictConfig = None):
         cfg.DATASET.nb_id_class = int(cfg.DATASET.num_classes*cfg.DATASET.id_ratio)
         cfg.DATASET.num_classes = cfg.DATASET.nb_id_class
         
-    print(OmegaConf.to_yaml(cfg))
+    if print_args:
+        print(OmegaConf.to_yaml(cfg))
     
     return cfg  
 
