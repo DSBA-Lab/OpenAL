@@ -3,8 +3,10 @@ from omegaconf import OmegaConf
 from datasets import stats
 
 
-def parser():
-    args = OmegaConf.from_cli()
+def parser(args: omegaconf.dictconfig.DictConfig = None):
+    if args == None:
+        args = OmegaConf.from_cli()
+        
     # load default config
     cfg = OmegaConf.load(args.default_cfg)
     del args['default_cfg']
