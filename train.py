@@ -53,7 +53,6 @@ def accuracy(outputs, targets, return_correct=False):
     else:
         return correct/targets.size(0)
 
-
 def create_criterion(name, params):
     if name == 'CrossEntropyLoss':
         return torch.nn.CrossEntropyLoss(**params)
@@ -112,6 +111,97 @@ def calc_metrics(y_true: list, y_score: np.ndarray, y_pred: list, return_per_cla
 
     return metrics
 
+def load_resume(ckp_path: str, ckp_round: int, strategy, seed: int, is_openset: bool = False):
+    total, init, query = os.path.basename(os.path.dirname(ckp_path)).split('-')
+    n_total = int(total.split('_')[1])
+    n_init = int(init.split('_')[1])
+    n_query = int(query.split('_')[1])
+    
+    # get round
+    nb_round = (n_total - n_init)/n_query
+    
+    if nb_round % int(nb_round) != 0:
+        nb_round = int(nb_round) + 1
+    else:
+        nb_round = int(nb_round)
+    
+    # load previous results
+    model = strategy.init_model()
+    model.load_state_dict(torch.load(os.path.join(ckp_path, f'model_seed{seed}-round{ckp_round}.pt')))
+    
+    # history query
+    query_log_df = pd.read_csv(os.path.join(ckp_path, 'query_log.csv'))
+    round_list = [f'round{r}' for r in range(ckp_round+1)]
+    query_log_df.loc[~query_log_df['query_round'].isin(round_list), 'query_round'] = np.nan
+    
+    nb_labeled_df = pd.read_csv(os.path.join(ckp_path, 'nb_labeled.csv'))
+    nb_labeled_df = nb_labeled_df.iloc[:ckp_round+1]
+    
+    # history metrics
+    log_df_valid = pd.read_csv(os.path.join(ckp_path, f'round{nb_round}-seed{seed}_valid.csv')).iloc[:ckp_round+1]
+    log_df_test = pd.read_csv(os.path.join(ckp_path, f'round{nb_round}-seed{seed}_test.csv')).iloc[:ckp_round+1]
+    
+    metrics_log_eval = dict([
+        (k, v) for k, v in json.load(open(os.path.join(ckp_path, f'round{nb_round}-seed{seed}_valid-per_class.json'), 'r')).items() 
+        if int(k.strip('round')) <= ckp_round
+    ])
+    metrics_log_test = dict([
+        (k, v) for k, v in json.load(open(os.path.join(ckp_path, f'round{nb_round}-seed{seed}_test-per_class.json'), 'r')).items() 
+        if int(k.strip('round')) <= ckp_round
+    ])
+    
+    # reset index 
+    if is_openset:
+        query_log_df.loc[~query_log_df['ID_query_round'].isin(round_list), 'ID_query_round'] = np.nan
+        
+        query_idx = query_log_df[~query_log_df['ID_query_round'].isna()]['idx'].values
+        all_query_idx = query_log_df[~query_log_df['query_round'].isna()]['idx'].values
+        unlabeled_idx = query_log_df[query_log_df['query_round'].isna()]['idx'].values
+        ood_query_idx = np.array(list(set(all_query_idx) - set(query_idx)))
+        
+        # init
+        strategy.is_ood[:] = False
+        strategy.is_unlabeled[:] = False
+        
+        # reset
+        strategy.is_ood[ood_query_idx] = True
+        strategy.is_unlabeled[unlabeled_idx] = True
+        
+        print("[RESUME] # Labeled in: {}, ood: {}, Unlabeled: {}".format(len(query_idx), len(ood_query_idx), len(unlabeled_idx)))
+    else:
+        query_idx = query_log_df[~query_log_df['query_round'].isna()]['idx'].values
+        unlabeled_idx = query_log_df[query_log_df['query_round'].isna()]['idx'].values
+        
+        print("[RESUME] # Labeled: {}, Unlabeled: {}".format(len(query_idx), len(unlabeled_idx)))
+    
+    # init
+    strategy.is_labeled[:] = False
+    
+    # reset
+    strategy.is_labeled[query_idx] = True
+    
+    start_round = ckp_round + 1
+    
+    return_output = {
+        'model'       : model,
+        'strategy'    : strategy,
+        'start_round' : start_round,
+        'history'     : {
+            'query_log'  : query_log_df,
+            'nb_labeled' : nb_labeled_df,
+            'log' : {
+                'valid' : log_df_valid,
+                'test'  : log_df_test
+            },
+            'metrics' : {
+                'valid' : metrics_log_eval,
+                'test'  : metrics_log_test
+            }
+        }
+    }
+    
+    return return_output
+
 
 def get_metrics(metrics: dict, metrics_log: str, targets: list, scores: list, preds: list, return_per_class: str = False):
     metrics.update(calc_metrics(
@@ -160,13 +250,14 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
             if getattr(model, 'LPM', False): # learning loss
                 outputs = {}
                 outputs['logits'] = model.backbone(inputs)
-                
+
                 # detach LPM for learning loss
                 if train_params.get('is_detach_lpm', False):
                     for k, v in model.layer_outputs.items():
                         model.layer_outputs[k] = v.detach()
                 
                 outputs['loss_pred'] = model.LPM(model.layer_outputs)
+
             else:
                 outputs = model(inputs)        
 
@@ -359,8 +450,16 @@ def fit(
             else:
                 scheduler.step()
 
-def full_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):        
-
+def full_run(cfg: dict, trainset, validset, testset, savedir: str):
+    # set accelerator
+    accelerator = Accelerator(
+        gradient_accumulation_steps = cfg.TRAIN.grad_accum_steps,
+        mixed_precision             = cfg.TRAIN.mixed_precision
+    )
+    
+    # set device
+    _logger.info('Device: {}'.format(accelerator.device))
+    
     # id_ratio
     if cfg.DATASET.get('id_ratio', False):
         # create ID and OOD targets
@@ -476,9 +575,15 @@ def full_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: 
     criterion = create_criterion(name=cfg.LOSS.name, params=cfg.LOSS.get('params', {}))
     
     # prepraring accelerator
-    model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
-        model, optimizer, trainloader, validloader, testloader, scheduler
+    model, trainloader, validloader, testloader = accelerator.prepare(
+        model, trainloader, validloader, testloader
     )
+    
+    for k, opt in optimizer.items():
+        optimizer[k] = accelerator.prepare(opt)
+        
+    for k, sched in scheduler.items():
+        scheduler[k] = accelerator.prepare(sched)
 
     # fitting model
     fit(
@@ -548,8 +653,16 @@ def full_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: 
     json.dump(test_results, open(os.path.join(savedir, f'results-seed{cfg.DEFAULT.seed}_test.json'), 'w'), indent='\t')
     
 
-def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
-
+def al_run(cfg: dict, trainset, validset, testset, savedir: str):
+    # set accelerator
+    accelerator = Accelerator(
+        gradient_accumulation_steps = cfg.TRAIN.grad_accum_steps,
+        mixed_precision             = cfg.TRAIN.mixed_precision
+    )
+    
+    # set device
+    _logger.info('Device: {}'.format(accelerator.device))
+    
     # set active learning arguments
     nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
     
@@ -597,32 +710,72 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         **cfg.AL.get('params', {})
     )
     
-    # define train dataloader
-    trainloader = strategy.get_trainloader()
-    
-    # define log dataframe
-    log_df_valid = pd.DataFrame(
-        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
-    )
-    log_df_test = pd.DataFrame(
-        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+    # define test dataloader
+    validloader = DataLoader(
+        dataset     = validset,
+        batch_size  = cfg.DATASET.test_batch_size,
+        shuffle     = False,
+        num_workers = cfg.DATASET.num_workers
     )
     
-    # query log dataframe
-    query_log_df = pd.DataFrame({'idx': range(len(is_labeled))})
-    query_log_df['query_round'] = None
-    query_log_df.loc[is_labeled, 'query_round'] = 'round0'
+    # define test dataloader
+    testloader = DataLoader(
+        dataset     = testset,
+        batch_size  = cfg.DATASET.test_batch_size,
+        shuffle     = False,
+        num_workers = cfg.DATASET.num_workers
+    )
     
-    # number of labeled set log dataframe
-    nb_labeled_df = pd.DataFrame({'round': range(nb_round+1), 'nb_labeled': [0]*(nb_round+1)})
-    nb_labeled_df.loc[nb_labeled_df['round']==0, 'nb_labeled'] = is_labeled.sum()
-    
-    # define dict to save confusion matrix and metrics per class
-    metrics_log_eval = {}
-    metrics_log_test = {}
+    # resume
+    if cfg.TRAIN.get('resume', False).get('use', False):
+        is_resume = True
+        
+        resume_info = load_resume(
+            ckp_path   = cfg.TRAIN.resume.ckp_path,
+            ckp_round  = cfg.TRAIN.resume.ckp_round,
+            strategy   = strategy,
+            seed       = cfg.DEFAULT.seed,
+            is_openset = cfg.AL.get('ood_ratio', False)
+        )
+        
+        model = resume_info['model']
+        strategy = resume_info['strategy']
+        start_round = resume_info['start_round']
+        history = resume_info['history']
+        
+        query_log_df, nb_labeled_df = history['query_log'], history['nb_labeled']
+        log_df_valid, log_df_test = history['log']['valid'], history['log']['test']
+        metrics_log_eval, metrics_log_test = history['metrics']['valid'], history['metrics']['test']
+        
+        model = accelerator.prepare(model)
+    else:
+        is_resume = False
+        start_round = 0 
+        
+        # define log dataframe
+        log_df_valid = pd.DataFrame(
+            columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+        )
+        log_df_test = pd.DataFrame(
+            columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+        )
+        
+        # query log dataframe
+        query_log_df = pd.DataFrame({'idx': range(len(is_labeled))})
+        query_log_df['query_round'] = None
+        query_log_df.loc[is_labeled, 'query_round'] = 'round0'
+        
+        # number of labeled set log dataframe
+        nb_labeled_df = pd.DataFrame({'round': [0], 'nb_labeled': [is_labeled.sum()]})
+        
+        # define dict to save confusion matrix and metrics per class
+        metrics_log_eval = {}
+        metrics_log_test = {}
+        
+    nb_round += start_round
     
     # run
-    for r in range(nb_round+1):
+    for r in range(start_round, nb_round+1):
         
         if r != 0:
             # query sampling    
@@ -631,31 +784,38 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             # update query
             strategy.update(query_idx)
             
-            # get trainloader
-            del trainloader
-            trainloader = strategy.get_trainloader()
+            # check resume
+            if is_resume:
+                is_resume = False
+            
+            # define accelerator
+            accelerator = Accelerator(
+                gradient_accumulation_steps = cfg.TRAIN.grad_accum_steps,
+                mixed_precision             = cfg.TRAIN.mixed_precision
+            )
+            if hasattr(strategy, 'accelerator'):
+                strategy.accelerator = accelerator
             
             # save query index
             query_log_df.loc[query_idx, 'query_round'] = f'round{r}'
             query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
             
             # save nb_labeled
-            nb_labeled_df.loc[nb_labeled_df['round']==r, 'nb_labeled'] = strategy.is_labeled.sum()
+            nb_labeled_r = {'round': [r], 'nb_labeled': [strategy.is_labeled.sum()]}
+            nb_labeled_df = pd.concat([nb_labeled_df, pd.DataFrame(nb_labeled_r, index=[len(nb_labeled_df)])], axis=0)
             nb_labeled_df.to_csv(os.path.join(savedir, 'nb_labeled.csv'), index=False)
-            
-            # clean memory
-            del optimizer, scheduler, validloader, testloader
-            if not cfg.AL.continual:
-                del model
-                
-            accelerator.free_memory()
         
         # logging
-        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(is_labeled)))
+        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.is_labeled)))
         
         # build Model
         if not cfg.AL.get('continual', False) or r == 0:
             model = strategy.init_model()
+            model = accelerator.prepare(model)
+        
+        # get trainloader
+        trainloader = strategy.get_trainloader()
+        trainloader, validloader, testloader = accelerator.prepare(trainloader, validloader, testloader)
         
         # optimizer
         optimizer = create_optimizer(
@@ -673,55 +833,34 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
             params        = cfg.SCHEDULER.get('params', {}),
             warmup_params = cfg.SCHEDULER.get('warmup_params', {})
         )
-
-        # define test dataloader
-        validloader = DataLoader(
-            dataset     = validset,
-            batch_size  = cfg.DATASET.test_batch_size,
-            shuffle     = False,
-            num_workers = cfg.DATASET.num_workers
-        )
-        
-        # define test dataloader
-        testloader = DataLoader(
-            dataset     = testset,
-            batch_size  = cfg.DATASET.test_batch_size,
-            shuffle     = False,
-            num_workers = cfg.DATASET.num_workers
-        )
-        
-        # prepraring accelerator
-        model, optimizer, trainloader, validloader, testloader, scheduler = accelerator.prepare(
-            model, optimizer, trainloader, validloader, testloader, scheduler
-        )
-        
-        if r == 0 and cfg.MODEL.get('ckp_round0'):
-            # logging
-            _logger.info('Load Round 0 checkpoint')
-            model.load_state_dict(torch.load(cfg.MODEL.ckp_round0))
-        else:
-            # initialize wandb
-            if cfg.TRAIN.wandb.use:
-                wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
-
-            # fitting model
-            fit(
-                model        = model, 
-                trainloader  = trainloader, 
-                testloader   = None, 
-                criterion    = strategy.loss_fn, 
-                optimizer    = optimizer, 
-                scheduler    = scheduler,
-                accelerator  = accelerator,
-                epochs       = cfg.TRAIN.epochs, 
-                use_wandb    = cfg.TRAIN.wandb.use,
-                log_interval = cfg.TRAIN.log_interval,
-                seed         = cfg.DEFAULT.seed,
-                **cfg.TRAIN.get('params', {})
-            )
+        for k, opt in optimizer.items():
+            optimizer[k] = accelerator.prepare(opt)
             
-            # save model
-            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
+        for k, sched in scheduler.items():
+            scheduler[k] = accelerator.prepare(sched)
+    
+        # initialize wandb
+        if cfg.TRAIN.wandb.use:
+            wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
+
+        # fitting model
+        fit(
+            model        = model, 
+            trainloader  = trainloader, 
+            testloader   = None, 
+            criterion    = strategy.loss_fn, 
+            optimizer    = optimizer, 
+            scheduler    = scheduler,
+            accelerator  = accelerator,
+            epochs       = cfg.TRAIN.epochs, 
+            use_wandb    = cfg.TRAIN.wandb.use,
+            log_interval = cfg.TRAIN.log_interval,
+            seed         = cfg.DEFAULT.seed,
+            **cfg.TRAIN.get('params', {})
+        )
+        
+        # save model
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
 
         # ====================
         # validation results
@@ -802,7 +941,17 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Ac
         
         
         
-def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, accelerator: Accelerator):
+def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str):
+
+    # set accelerator
+    accelerator = Accelerator(
+        gradient_accumulation_steps = cfg.TRAIN.grad_accum_steps,
+        mixed_precision             = cfg.TRAIN.mixed_precision
+    )
+    
+    # set device
+    _logger.info('Device: {}'.format(accelerator.device))
+    
 
     # set active learning arguments
     nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
@@ -888,35 +1037,74 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
         **openset_params
     )
     
-    # define train dataloader
-    trainloader = strategy.get_trainloader()
-    
-    # define log dataframe
-    log_df_valid = pd.DataFrame(
-        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+    # define test dataloader
+    validloader = create_id_testloader(
+        dataset     = validset,
+        id_targets  = id_targets,
+        batch_size  = cfg.DATASET.test_batch_size,
+        num_workers = cfg.DATASET.num_workers    
     )
-    log_df_test = pd.DataFrame(
-        columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+    testloader = create_id_testloader(
+        dataset     = testset,
+        id_targets  = id_targets,
+        batch_size  = cfg.DATASET.test_batch_size,
+        num_workers = cfg.DATASET.num_workers    
     )
     
-    # query log dataframe
-    query_log_df = pd.DataFrame({'idx': range(len(is_labeled)), 'is_unlabel': np.zeros(len(is_labeled), dtype=bool)})
-    query_log_df.loc[is_unlabeled, 'is_unlabel'] = True
-    query_log_df['query_round'] = None
-    query_log_df['ID_query_round'] = None
-    query_log_df.loc[np.r_[np.where(is_labeled==True)[0], np.where(is_ood==True)[0]], 'query_round'] = 'round0'
-    query_log_df.loc[is_labeled, 'ID_query_round'] = 'round0'
-    
-    # number of labeled set log dataframe
-    nb_labeled_df = pd.DataFrame({'round': range(nb_round+1), 'nb_labeled': [0]*(nb_round+1)})
-    nb_labeled_df.loc[nb_labeled_df['round']==0, 'nb_labeled'] = is_labeled.sum()
-    
-    # define dict to save confusion matrix and metrics per class
-    metrics_log_eval = {}
-    metrics_log_test = {}
+    # resume
+    if cfg.TRAIN.get('resume', False).get('use', False):
+        is_resume = True
+        
+        resume_info = load_resume(
+            ckp_path   = cfg.TRAIN.resume.ckp_path,
+            ckp_round  = cfg.TRAIN.resume.ckp_round,
+            strategy   = strategy,
+            seed       = cfg.DEFAULT.seed,
+            is_openset = cfg.AL.get('ood_ratio', False)
+        )
+        
+        model = resume_info['model']
+        strategy = resume_info['strategy']
+        start_round = resume_info['start_round']
+        history = resume_info['history']
+        
+        query_log_df, nb_labeled_df = history['query_log'], history['nb_labeled']
+        log_df_valid, log_df_test = history['log']['valid'], history['log']['test']
+        metrics_log_eval, metrics_log_test = history['metrics']['valid'], history['metrics']['test']
+        
+        model = accelerator.prepare(model)
+        
+    else:
+        is_resume = False
+        start_round = 0 
+        
+        # define log dataframe
+        log_df_valid = pd.DataFrame(
+            columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+        )
+        log_df_test = pd.DataFrame(
+            columns=['round', 'auroc', 'f1', 'recall', 'precision', 'bcr', 'acc', 'loss']
+        )
+        
+        # query log dataframe
+        query_log_df = pd.DataFrame({'idx': range(len(is_labeled)), 'is_unlabel': np.zeros(len(is_labeled), dtype=bool)})
+        query_log_df.loc[is_unlabeled, 'is_unlabel'] = True
+        query_log_df['query_round'] = None
+        query_log_df['ID_query_round'] = None
+        query_log_df.loc[np.r_[np.where(is_labeled==True)[0], np.where(is_ood==True)[0]], 'query_round'] = 'round0'
+        query_log_df.loc[is_labeled, 'ID_query_round'] = 'round0'
+        
+        # number of labeled set log dataframe
+        nb_labeled_df = pd.DataFrame({'round': [0], 'nb_labeled': [is_labeled.sum()]})
+        
+        # define dict to save confusion matrix and metrics per class
+        metrics_log_eval = {}
+        metrics_log_test = {}
+        
+    nb_round += start_round
     
     # run
-    for r in range(nb_round+1):
+    for r in range(start_round, nb_round+1):
         
         if r != 0:    
             # query sampling    
@@ -925,9 +1113,17 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             # update query
             id_query_idx = strategy.update(query_idx=query_idx)
             
-            # get trainloader
-            del trainloader
-            trainloader = strategy.get_trainloader()
+            # check resume
+            if is_resume:
+                is_resume = False
+            
+            # define accelerator
+            accelerator = Accelerator(
+                gradient_accumulation_steps = cfg.TRAIN.grad_accum_steps,
+                mixed_precision             = cfg.TRAIN.mixed_precision
+            )
+            if hasattr(strategy, 'accelerator'):
+                strategy.accelerator = accelerator
             
             # save query index
             query_log_df.loc[query_idx, 'query_round'] = f'round{r}'
@@ -935,22 +1131,21 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             query_log_df.to_csv(os.path.join(savedir, 'query_log.csv'), index=False)
             
             # save nb_labeled
-            nb_labeled_df.loc[nb_labeled_df['round']==r, 'nb_labeled'] = strategy.is_labeled.sum()
+            nb_labeled_r = {'round': [r], 'nb_labeled': [strategy.is_labeled.sum()]}
+            nb_labeled_df = pd.concat([nb_labeled_df, pd.DataFrame(nb_labeled_r, index=[len(nb_labeled_df)])], axis=0)
             nb_labeled_df.to_csv(os.path.join(savedir, 'nb_labeled.csv'), index=False)
             
-            # clean memory
-            del optimizer, scheduler, validloader, testloader
-            if not cfg.AL.continual:
-                del model
-                
-            accelerator.free_memory()
-            
         # logging
-        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(is_labeled)))
+        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.is_labeled)))
         
         # build Model          
         if not cfg.AL.get('continual', False) or r == 0:
             model = strategy.init_model()
+            model = accelerator.prepare(model)
+        
+        # get trainloader
+        trainloader = strategy.get_trainloader()
+        trainloader, validloader, testloader = accelerator.prepare(trainloader, validloader, testloader)
         
         # optimizer
         optimizer = create_optimizer(
@@ -969,59 +1164,34 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str, acceler
             params        = cfg.SCHEDULER.get('params', {}),
             warmup_params = cfg.SCHEDULER.get('warmup_params', {})
         )
-
-        # define test dataloader
-        validloader = create_id_testloader(
-            dataset     = validset,
-            id_targets  = id_targets,
-            batch_size  = cfg.DATASET.test_batch_size,
-            num_workers = cfg.DATASET.num_workers    
-        )
-        testloader = create_id_testloader(
-            dataset     = testset,
-            id_targets  = id_targets,
-            batch_size  = cfg.DATASET.test_batch_size,
-            num_workers = cfg.DATASET.num_workers    
-        )
-        
-        # prepraring accelerator
-        model, trainloader, validloader, testloader = accelerator.prepare(
-            model, trainloader, validloader, testloader
-        )
-        
         for k, opt in optimizer.items():
             optimizer[k] = accelerator.prepare(opt)
             
         for k, sched in scheduler.items():
             scheduler[k] = accelerator.prepare(sched)
-        
-        if r == 0 and cfg.MODEL.get('ckp_round0'):
-            # logging
-            _logger.info('Load Round 0 checkpoint')
-            model.load_state_dict(torch.load(cfg.MODEL.ckp_round0))
-        else:
-            # initialize wandb
-            if cfg.TRAIN.wandb.use:
-                wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
-            # fitting model
-            fit(
-                model        = model, 
-                trainloader  = trainloader, 
-                testloader   = None, 
-                criterion    = strategy.loss_fn, 
-                optimizer    = optimizer, 
-                scheduler    = scheduler,
-                accelerator  = accelerator,
-                epochs       = cfg.TRAIN.epochs, 
-                use_wandb    = cfg.TRAIN.wandb.use,
-                log_interval = cfg.TRAIN.log_interval,
-                seed         = cfg.DEFAULT.seed,
-                **cfg.TRAIN.get('params', {})
-            )
-            
-            # save model
-            torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
+        # initialize wandb
+        if cfg.TRAIN.wandb.use:
+            wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
+
+        # fitting model
+        fit(
+            model        = model, 
+            trainloader  = trainloader, 
+            testloader   = None, 
+            criterion    = strategy.loss_fn, 
+            optimizer    = optimizer, 
+            scheduler    = scheduler,
+            accelerator  = accelerator,
+            epochs       = cfg.TRAIN.epochs, 
+            use_wandb    = cfg.TRAIN.wandb.use,
+            log_interval = cfg.TRAIN.log_interval,
+            seed         = cfg.DEFAULT.seed,
+            **cfg.TRAIN.get('params', {})
+        )
+        
+        # save model
+        torch.save(model.state_dict(), os.path.join(savedir, f"model_seed{cfg.DEFAULT.seed}-round{r}.pt"))
 
         # ====================
         # validation results

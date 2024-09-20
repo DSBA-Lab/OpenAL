@@ -1,6 +1,5 @@
 import os
 import json
-import pickle
 import numpy as np
 
 from sklearn.metrics import confusion_matrix, f1_score

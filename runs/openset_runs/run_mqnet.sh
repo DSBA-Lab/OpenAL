@@ -13,8 +13,8 @@ let n_end=$cost*$cycle
 
 CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
     default_cfg=./configs/default_setting.yaml \
-    strategy_cfg=./configs/$strategies.yaml \
-    openset_cfg=./configs_openset/mqnet.yaml \
+    strategy_cfg=./configs/standard_al/$strategies.yaml \
+    openset_cfg=./configs/openset_al/mqnet.yaml \
     DEFAULT.exp_name=$strategies-ood$ood_ratio-id$id_ratio \
     DATASET.name=$ds \
     TRAIN.epochs=$epochs \

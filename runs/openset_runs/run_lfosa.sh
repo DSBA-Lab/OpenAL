@@ -12,7 +12,7 @@ let n_end=$cost*$cycle
 
 CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
     default_cfg=./configs/default_setting.yaml \
-    openset_cfg=./configs_openset/lfosa.yaml \
+    openset_cfg=./configs/openset_al/lfosa.yaml \
     DEFAULT.exp_name=ood$ood_ratio-id$id_ratio \
     DATASET.name=$ds \
     TRAIN.epochs=$epochs \

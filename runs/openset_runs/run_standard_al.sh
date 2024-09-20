@@ -13,7 +13,7 @@ let n_end=$cost*$cycle
 
 CUDA_VISIBLE_DEVICES=$gpu_id python main.py \
     default_cfg=./configs/default_setting.yaml \
-    strategy_cfg=./configs/$strategy.yaml \
+    strategy_cfg=./configs/standard_al/$strategy.yaml \
     DEFAULT.exp_name=ood$ood_ratio-id$id_ratio \
     DATASET.name=$ds \
     TRAIN.epochs=$epochs \
