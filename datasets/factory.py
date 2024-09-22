@@ -9,6 +9,7 @@ from torchvision import datasets
 
 from .cifar_lt import CIFAR10LT, CIFAR100LT
 from .waterbird import WaterBird
+from .domainnet import DomainNet
 from .augmentation import create_augmentation
 
 def load_mnist(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
@@ -124,6 +125,24 @@ def load_svhn(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: li
         root      = os.path.join(datadir,'SVHN'), 
         split     = 'test', 
         download  = True,
+        transform = create_augmentation(img_size=img_size, mean=mean, std=std)
+    )
+
+    return trainset, testset
+
+def load_domainnet(datadir: str, in_domain: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
+
+    trainset = DomainNet(
+        root      = datadir,
+        train     = True,
+        in_domain = in_domain,
+        transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
+    )
+    
+    testset = DomainNet(
+        root      = datadir,
+        train     = False,
+        in_domain = in_domain,
         transform = create_augmentation(img_size=img_size, mean=mean, std=std)
     )
 
