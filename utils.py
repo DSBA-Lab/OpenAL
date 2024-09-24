@@ -245,7 +245,10 @@ def extract_al_results(
                 savedir, model, '*', exp,
                 f'total_{n_end}-init_{n_start}-query_{n_query}', f'seed{seed}', al_filename
             )
-            f = glob(p)[0]
+            try:
+                f = glob(p)[0]
+            except:
+                print(p)
             
             if not binary:
                 df_seed = pd.read_csv(f)
@@ -330,10 +333,12 @@ def extract_full_results(
     """
     
     # get full supervised learning results
-    r_full = defaultdict(list)
+    r = {}
     
     # dataset seed
     for f in fullname_list:    
+        r_full = defaultdict(list)
+        
         # model seed
         for seed in seed_list:
             # define filename
@@ -349,7 +354,7 @@ def extract_full_results(
                 full_filename += '.json'   
             
             # get results
-            full_s = json.load(open(os.path.join(savedir, model, 'Full', f, full_filename), 'r'))
+            full_s = json.load(open(os.path.join(savedir, model, 'Full', f, f'seed{seed}', full_filename), 'r'))
             
             if not test:
                 del full_s['best_step']
@@ -363,9 +368,14 @@ def extract_full_results(
             for k, v in full_s.items():
                 r_full[k].append(v)
         
-    r_full = pd.DataFrame(r_full)
+        r_full = pd.DataFrame(r_full)
+        r_full['seed'] = seed_list
+        r_full['round'] = 0
+        r_full['strategy'] = f
+        
+        r[f] = r_full
     
-    return r_full
+    return r
 
 
 def comparison_strategy(
@@ -500,9 +510,9 @@ def comparison_strategy(
             plt.savefig(savepath, dpi=300)
         plt.show()
             
-        
-    return r
-
+    
+    return r, r_full
+    
 
 def strategy_figure(data, data_full, metric, total_round, n_query, n_start, ax):
     data = pd.concat(list(data.values()))
