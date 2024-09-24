@@ -1,4 +1,3 @@
-import logging
 import wandb
 import time
 import os
@@ -23,8 +22,6 @@ from query_strategies.utils import TrainIterableDataset
 from models import create_model
 from query_strategies.utils import NoIndent, MyEncoder
 from omegaconf import OmegaConf
-
-_logger = logging.getLogger('train')
 
 class AverageMeter:
     """Computes and stores the average and current value"""
@@ -214,7 +211,7 @@ def get_metrics(metrics: dict, metrics_log: str, targets: list, scores: list, pr
                     (100.*metrics['bcr'], 100.*metrics['auroc'], 100.*metrics['f1'], 100.*metrics['recall'], 100.*metrics['precision'])
 
     # classification report
-    _logger.info(classification_report(y_true=targets, y_pred=preds, digits=4, zero_division=0.0))
+    print(classification_report(y_true=targets, y_pred=preds, digits=4, zero_division=0.0))
     
     return metrics, metrics_log
 
@@ -298,7 +295,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
                         lr_current = optimizer['backbone'].param_groups[0]['lr']
                     else:
                         lr_current = optimizer.param_groups[0]['lr']
-                    _logger.info('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
+                    print('TRAIN [{:>4d}/{}] Loss: {loss.val:>6.4f} ({loss.avg:>6.4f}) '
                                 'Acc: {acc.avg:.3%} '
                                 'LR: {lr:.3e} '
                                 'Time: {batch_time.val:.3f}s, {rate:>7.2f}/s ({batch_time.avg:.3f}s, {rate_avg:>7.2f}/s) '
@@ -335,7 +332,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
         )
     
     # logging metrics
-    _logger.info(metrics_log)
+    print(metrics_log)
         
     return metrics
 
@@ -373,7 +370,7 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
             total_targets.extend(targets.cpu().tolist())
             
             if (idx+1) % log_interval == 0: 
-                _logger.info('{0:s} [{1:d}/{2:d}]: Loss: {3:.3f} | Acc: {4:.3f}% [{5:d}/{6:d}]'.format(name, idx+1, len(dataloader), total_loss/(idx+1), 100.*correct/total, correct, total))
+                print('{0:s} [{1:d}/{2:d}]: Loss: {3:.3f} | Acc: {4:.3f}% [{5:d}/{6:d}]'.format(name, idx+1, len(dataloader), total_loss/(idx+1), 100.*correct/total, correct, total))
     
     # calculate metrics
     metrics = {}
@@ -390,7 +387,7 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
     )
     
     # logging metrics
-    _logger.info(metrics_log)
+    print(metrics_log)
     
     return metrics
             
@@ -404,7 +401,7 @@ def fit(
     
     torch_seed(seed)    
     for epoch in range(epochs):
-        _logger.info(f'\nEpoch: {epoch+1}/{epochs}')
+        print(f'\nEpoch: {epoch+1}/{epochs}')
         
         # for learning loss
         if 'detach_epoch_ratio' in train_params.keys():
@@ -458,7 +455,7 @@ def full_run(cfg: dict, trainset, validset, testset, savedir: str):
     )
     
     # set device
-    _logger.info('Device: {}'.format(accelerator.device))
+    print('Device: {}'.format(accelerator.device))
     
     # id_ratio
     if cfg.DATASET.get('id_ratio', False):
@@ -661,7 +658,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str):
     )
     
     # set device
-    _logger.info('Device: {}'.format(accelerator.device))
+    print('Device: {}'.format(accelerator.device))
     
     # set active learning arguments
     nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
@@ -672,7 +669,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str):
         nb_round = int(nb_round)
     
     # logging
-    _logger.info('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {}'.format(
+    print('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {}'.format(
         len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round))
     
     # inital sampling labeling
@@ -806,7 +803,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str):
             nb_labeled_df.to_csv(os.path.join(savedir, 'nb_labeled.csv'), index=False)
         
         # logging
-        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.is_labeled)))
+        print('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.is_labeled)))
         
         # build Model
         if not cfg.AL.get('continual', False) or r == 0:
@@ -935,7 +932,7 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str):
         )   
         
         
-        _logger.info('append result [shape: {}]'.format(log_df_test.shape))
+        print('append result [shape: {}]'.format(log_df_test.shape))
         
         wandb.finish()
         
@@ -950,7 +947,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str):
     )
     
     # set device
-    _logger.info('Device: {}'.format(accelerator.device))
+    print('Device: {}'.format(accelerator.device))
     
 
     # set active learning arguments
@@ -962,7 +959,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str):
         nb_round = int(nb_round)
     
     # logging
-    _logger.info('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {} [OOD ratio] {}'.format(
+    print('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {} [OOD ratio] {}'.format(
         len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round, cfg.AL.ood_ratio))
     
     # create ID and OOD targets
@@ -1136,7 +1133,7 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str):
             nb_labeled_df.to_csv(os.path.join(savedir, 'nb_labeled.csv'), index=False)
             
         # logging
-        _logger.info('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.is_labeled)))
+        print('[Round {}/{}] training samples: {}'.format(r, nb_round, sum(strategy.is_labeled)))
         
         # build Model          
         if not cfg.AL.get('continual', False) or r == 0:
@@ -1265,6 +1262,6 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str):
             index=False
         )   
         
-        _logger.info('append result [shape: {}]'.format(log_df_test.shape))
+        print('append result [shape: {}]'.format(log_df_test.shape))
         
         wandb.finish()
