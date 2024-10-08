@@ -33,7 +33,7 @@ TRAIN:
     round: null
   params:
     steps_per_epoch: 100
-    metrics_off: false
+    metrics_off: true
 LOSS:
   name: CrossEntropyLoss
 MODEL:
