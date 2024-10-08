@@ -68,9 +68,16 @@ def create_is_labeled_unlabeled(trainset, id_targets: np.ndarray, size: int, ood
     ood_total_idx = random.sample(ood_total_idx, n_ood)
     print("# Total ID: {}, OOD: {}".format(len(id_total_idx), len(ood_total_idx)))
 
-    _, lb_idx = train_test_split(id_total_idx, test_size=int(size * (1 - ood_ratio)), stratify=trainset.targets[id_total_idx], random_state=seed)
-    ood_start_idx = random.sample(ood_total_idx, int(size * ood_ratio))
-    ulb_idx = list(set(id_total_idx + ood_total_idx) - set(lb_idx) - set(ood_start_idx))
+    test_size = int(size * (1 - ood_ratio))
+    if len(id_total_idx) > test_size:
+        _, lb_idx = train_test_split(id_total_idx, test_size=test_size, stratify=trainset.targets[id_total_idx], random_state=seed)
+        ood_start_idx = random.sample(ood_total_idx, int(size * ood_ratio))
+        ulb_idx = list(set(id_total_idx + ood_total_idx) - set(lb_idx) - set(ood_start_idx))
+    else:
+        lb_idx = id_total_idx
+        ood_start_idx = []
+        ulb_idx = []
+        
     print("# Labeled in: {}, ood: {}, Unlabeled: {}".format(len(lb_idx), len(ood_start_idx), len(ulb_idx)))
 
     # defined empty labeled index

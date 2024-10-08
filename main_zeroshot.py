@@ -113,12 +113,15 @@ def openset_clipnal_run(cfg: dict, trainset, testset, savedir: str):
     print('Device: {}'.format(accelerator.device))
     
     # set active learning arguments
-    nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
-    
-    if nb_round % int(nb_round) != 0:
-        nb_round = int(nb_round) + 1
+    if cfg.AL.n_query == 0:
+        nb_round = 0
     else:
-        nb_round = int(nb_round)
+        nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
+        
+        if nb_round % int(nb_round) != 0:
+            nb_round = int(nb_round) + 1
+        else:
+            nb_round = int(nb_round)
     
     # logging
     print('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {} [OOD ratio] {}'.format(
