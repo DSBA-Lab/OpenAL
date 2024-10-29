@@ -130,24 +130,25 @@ def load_svhn(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: li
 
     return trainset, testset
 
-def load_domainnet(datadir: str, in_domain: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
+def load_domainnet(datadir: str, in_domain: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, use_domain: bool = False):
 
     trainset = DomainNet(
-        root      = datadir,
-        train     = True,
-        in_domain = in_domain,
-        transform = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info)
+        root       = os.path.join(datadir, 'DomainNet'),
+        train      = True,
+        in_domain  = in_domain,
+        transform  = create_augmentation(img_size=img_size, mean=mean, std=std, aug_info=aug_info),
+        use_domain = use_domain
     )
     
     testset = DomainNet(
-        root      = datadir,
-        train     = False,
-        in_domain = in_domain,
-        transform = create_augmentation(img_size=img_size, mean=mean, std=std)
+        root       = os.path.join(datadir, 'DomainNet'),
+        train      = False,
+        in_domain  = in_domain,
+        transform  = create_augmentation(img_size=img_size, mean=mean, std=std),
+        use_domain = use_domain
     )
 
     return trainset, testset
-
 
 def load_tiny_imagenet_200(datadir: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None):
 
@@ -231,6 +232,12 @@ def create_dataset(
     datadir: str, dataname: str, img_size: int, mean: tuple, std: tuple, aug_info: list = None, **params
 ):
 
+    if 'DomainNet' in dataname:
+        dataname, in_domain = dataname.split('-')
+        domain_params = {'in_domain': in_domain}
+        params.update(domain_params)
+
+    # create datasets
     datasets = eval(f"load_{dataname.lower()}")(
         datadir  = datadir, 
         img_size = img_size,

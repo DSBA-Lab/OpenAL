@@ -30,7 +30,7 @@ def parser(args: omegaconf.dictconfig.DictConfig = None, print_args: bool = True
             del cfg['AL']
         
     # merge config with new keys
-    cfg = OmegaConf.merge(cfg, args)
+    cfg = update_cfg(cfg, args)
     
     # Update experiment name
     if 'AL' in cfg.keys():
@@ -47,22 +47,41 @@ def parser(args: omegaconf.dictconfig.DictConfig = None, print_args: bool = True
     # load dataset statistics
     cfg.DATASET.update(stats.datasets[cfg.DATASET.name])
     
-    if hasattr(cfg, 'AL'):        
-        # change num_classes to nb_id_class for open-set AL
-        if hasattr(cfg.AL, 'id_ratio'):
-            cfg.AL.nb_id_class = int(cfg.DATASET.num_classes*cfg.AL.id_ratio)
-            cfg.DATASET.num_classes = cfg.AL.nb_id_class
-    
-    # change num_classes to nb_id_class for full supervised learning
-    if hasattr(cfg.DATASET, 'id_ratio'):
-        cfg.DATASET.nb_id_class = int(cfg.DATASET.num_classes*cfg.DATASET.id_ratio)
-        cfg.DATASET.num_classes = cfg.DATASET.nb_id_class
+    if cfg.DATASET.get('use_predefined_id_targets', False):
+        cfg.DATASET.predefined_id_targets = stats.predefined_id_targets[cfg.DATASET.name]
+        cfg.AL.nb_id_class = len(cfg.DATASET.predefined_id_targets)
+        cfg.DATASET.num_classes = cfg.AL.nb_id_class
+    else:
+        if hasattr(cfg, 'AL'):        
+            # change num_classes to nb_id_class for open-set AL
+            if hasattr(cfg.AL, 'id_ratio'):
+                cfg.AL.nb_id_class = int(cfg.DATASET.num_classes*cfg.AL.id_ratio)
+                cfg.DATASET.num_classes = cfg.AL.nb_id_class
+        
+        # change num_classes to nb_id_class for full supervised learning
+        if hasattr(cfg.DATASET, 'id_ratio'):
+            cfg.DATASET.nb_id_class = int(cfg.DATASET.num_classes*cfg.DATASET.id_ratio)
+            cfg.DATASET.num_classes = cfg.DATASET.nb_id_class
         
     if print_args:
         print(OmegaConf.to_yaml(cfg))
     
     return cfg  
 
+def update_cfg(cfg, args):
+    if args.get('OPTIMIZER', False):
+        if args.OPTIMIZER.get('name'):
+            if (args.OPTIMIZER.name != cfg.OPTIMIZER.name) and args.OPTIMIZER.get('params', False):
+                cfg.OPTIMIZER.params = args.OPTIMIZER.params
+                
+    if args.get('SCHEDULER', False):
+        if args.SCHEDULER.get('name'):
+            if (args.SCHEDULER.name != cfg.SCHEDULER.name) and args.SCHEDULER.get('params', False):
+                cfg.SCHEDULER.params = args.SCHEDULER.params
+                
+    cfg = OmegaConf.merge(cfg, args)
+    
+    return cfg
 
 def parser_ssl():
     args = OmegaConf.from_cli()

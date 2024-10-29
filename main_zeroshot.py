@@ -156,15 +156,13 @@ def openset_clipnal_run(cfg: dict, trainset, testset, savedir: str):
         seed       = cfg.DEFAULT.seed
     )
     
-    # load visual classifier
+    # load visual encoder
     model, process_train, process_test = load_model(
         model_type  = cfg.AL.openset_params.model_type, 
         pre_train   = cfg.AL.openset_params.ckp_path, 
-        prompt_path = cfg.AL.openset_params.prompt_path, 
-        classes     = testset.classes[id_targets]
+        return_classifier = False
     ) 
-    if not cfg.DEFAULT.zeroshot:
-        model = ImageEncoder(encoder=model.image_encoder, num_classes=cfg.DATASET.num_classes)
+    model = ImageEncoder(encoder=model.visual, num_classes=cfg.DATASET.num_classes)
         
     trainset.transform = process_train
     testset.transform = process_test

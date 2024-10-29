@@ -1,66 +1,132 @@
 import os
 import json
 import wandb
-import random
 import pandas as pd
 import numpy as np
 
-from sklearn.model_selection import train_test_split
 from accelerate import Accelerator
 from omegaconf import OmegaConf
-from torch.utils.data import DataLoader
 
-from models import create_model
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.modules.loss import _Loss
+
+import timm
+from timm import create_model
+
+from datasets import create_dataset
 from query_strategies import torch_seed
 from query_strategies import create_query_strategy, \
                              create_is_labeled_unlabeled, \
-                             torch_seed, \
+                             create_id_ood_targets, \
+                             create_id_testloader, \
                              create_scheduler, create_optimizer
 from query_strategies.utils import MyEncoder                             
 from train import load_resume, test, fit
 from arguments import parser
 from main import make_directory
 
-def create_is_labeled_unlabeled(trainset, size: int, ood_ratio: float, seed: int):
-    '''
+class ImageEncoder(nn.Module):
+    def __init__(self, modelname, num_classes, img_size, only_classifier: bool = False):
+        super(ImageEncoder, self).__init__()
+        
+        self.only_classifier = only_classifier
+        self.encoder = create_model(modelname, pretrained=True, img_size=img_size, num_classes=0)
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+    
+        self.num_classes = num_classes
+        self.fc = nn.Linear(self.encoder.embed_dim, num_classes)
+    
+    @torch.no_grad()
+    def forward_features(self, x):
+        if self.only_classifier:
+            return x
+        else:
+            out = self.encoder(x)
+            return out
+        
+    def forward(self, x):
+        out = self.forward_features(x)
+        out = self.fc(out)
+        
+        return out
+
+class BalancedSoftmax(_Loss):
+    """
+    Balanced Softmax Loss
+    """
+    def __init__(self, num_per_cls: list):
+        super(BalancedSoftmax, self).__init__()
+        self.num_per_cls = torch.tensor(num_per_cls)
+
+    def forward(self, input, label, reduction='mean'):
+        return balanced_softmax_loss(labels=label, logits=input, num_per_cls=self.num_per_cls, reduction=reduction)
+
+
+def balanced_softmax_loss(labels, logits, num_per_cls, reduction):
+    """Compute the Balanced Softmax Loss between `logits` and the ground truth `labels`.
     Args:
-    - trainset (torch.utils.data.Dataset): trainset
-    - size (int): represents the absolute number of train samples. 
-    - ood_ratio (float): OOD class ratio
-    - seed (int): seed for random state
+      labels: A int tensor of size [batch].
+      logits: A float tensor of size [batch, no_of_classes].
+      num_per_cls: A int tensor of size [no of classes].
+      reduction: string. One of "none", "mean", "sum"
+    Returns:
+      loss: A float tensor. Balanced Softmax Loss.
+    """
+    npc = num_per_cls.type_as(logits)
+    npc = npc.unsqueeze(0).expand(logits.shape[0], -1)
+    logits = logits + npc.log()
+    loss = F.cross_entropy(input=logits, target=labels, reduction=reduction)
+    return loss
+
+
+# def create_is_labeled_unlabeled(trainset, size: int, seed: int):
+#     '''
+#     Args:
+#     - trainset (torch.utils.data.Dataset): trainset
+#     - size (int): represents the absolute number of train samples. 
+#     - seed (int): seed for random state
     
-    Return:
-    - labeled_idx (np.ndarray): selected labeled indice
-    - unlabeled_idx (np.ndarray): selected unlabeled indice
-    '''
+#     Return:
+#     - labeled_idx (np.ndarray): selected labeled indice
+#     - unlabeled_idx (np.ndarray): selected unlabeled indice
+#     '''
     
-    torch_seed(seed)
+#     torch_seed(seed)
 
-    id_total_idx = trainset.file_info[trainset.file_info['domain'] == trainset.in_domain].index.tolist()
-    ood_total_idx = trainset.file_info[trainset.file_info['domain'] != trainset.in_domain].index.tolist()
+#     id_total_idx = trainset.file_info[trainset.file_info['domain'] == trainset.in_domain].index.tolist()
+#     ood_total_idx = trainset.file_info[trainset.file_info['domain'] != trainset.in_domain].index.tolist()
+    
+#     print("# Total ID: {}, OOD: {}".format(len(id_total_idx), len(ood_total_idx)))
 
-    n_ood = round(len(id_total_idx) * (ood_ratio / (1 - ood_ratio)))
-    ood_total_idx = random.sample(ood_total_idx, n_ood)
-    print("# Total ID: {}, OOD: {}".format(len(id_total_idx), len(ood_total_idx)))
+#     c_size = int(size / len(trainset.classes))
 
-    _, lb_idx = train_test_split(id_total_idx, test_size=int(size * (1 - ood_ratio)), stratify=trainset.targets[id_total_idx], random_state=seed)
-    ood_start_idx = random.sample(ood_total_idx, int(size * ood_ratio))
-    ulb_idx = list(set(id_total_idx + ood_total_idx) - set(lb_idx) - set(ood_start_idx))
-    print("# Labeled in: {}, ood: {}, Unlabeled: {}".format(len(lb_idx), len(ood_start_idx), len(ulb_idx)))
+#     id_class_idx = trainset.file_info.loc[trainset.file_info['domain'] == trainset.in_domain, 'class_idx']
 
-    # defined empty labeled index
-    is_labeled = np.zeros(len(trainset), dtype=bool)
-    is_unlabeled = np.zeros(len(trainset), dtype=bool)
-    is_ood = np.zeros(len(trainset), dtype=bool)
+#     lb_idx = []
+#     for c in id_class_idx.unique():
+#         id_c_idx = np.random.choice(id_class_idx[id_class_idx == c].index, size=c_size, replace=False)
+#         lb_idx.extend(id_c_idx)
+        
+#     ulb_idx = list(set(id_total_idx + ood_total_idx) - set(lb_idx))
+#     print("# Labeled in: {}, Unlabeled: {}".format(len(lb_idx), len(ulb_idx)))
 
-    is_labeled[lb_idx] = True
-    is_unlabeled[ulb_idx] = True
-    is_ood[ood_start_idx] = True
+#     # defined empty labeled index
+#     is_labeled = np.zeros(len(trainset), dtype=bool)
+#     is_unlabeled = np.zeros(len(trainset), dtype=bool)
+#     is_ood = np.zeros(len(trainset), dtype=bool)
 
-    return is_labeled, is_unlabeled, is_ood
+#     is_labeled[lb_idx] = True
+#     is_unlabeled[ulb_idx] = True
+
+#     return is_labeled, is_unlabeled, is_ood
+
 
 
 def openset_al_run(cfg: dict, trainset, testset, savedir: str):
+    torch_seed(cfg.DEFAULT.seed)
 
     # set accelerator
     accelerator = Accelerator(
@@ -70,7 +136,6 @@ def openset_al_run(cfg: dict, trainset, testset, savedir: str):
     
     # set device
     print('Device: {}'.format(accelerator.device))
-    
 
     # set active learning arguments
     nb_round = (cfg.AL.n_end - cfg.AL.n_start)/cfg.AL.n_query
@@ -81,32 +146,70 @@ def openset_al_run(cfg: dict, trainset, testset, savedir: str):
         nb_round = int(nb_round)
     
     # logging
-    print('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {} [OOD ratio] {}'.format(
-        len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round, cfg.AL.ood_ratio))
+    print('[total samples] {}, [initial samples] {} [query samples] {} [end samples] {} [total round] {}'.format(
+        len(trainset), cfg.AL.n_start, cfg.AL.n_query, cfg.AL.n_end, nb_round))
+    
+    # create ID and OOD targets
+    trainset, id_targets = create_id_ood_targets(
+        dataset      = trainset,
+        nb_id_class  = cfg.AL.nb_id_class,
+        seed         = cfg.DEFAULT.seed,
+        id_targets   = cfg.DATASET.get('predefined_id_targets', []),
+        use_majority = cfg.DATASET.get('use_majority', False)
+    )
+    testset, id_targets_check = create_id_ood_targets(
+        dataset      = testset,
+        nb_id_class  = cfg.AL.nb_id_class,
+        seed         = cfg.DEFAULT.seed,
+        id_targets   = id_targets,
+    )
+    assert sum(id_targets == id_targets_check) == cfg.AL.nb_id_class, "ID targets are not matched"
+    
+    # save selected ID targets
+    json.dump(
+        obj    = {'target_ids': list(map(int, id_targets))},
+        fp     = open(os.path.join(savedir, 'target_ids.json'), 'w'), 
+        indent = '\t'
+    )
     
     # inital sampling labeling
     is_labeled, is_unlabeled, is_ood = create_is_labeled_unlabeled(
         trainset   = trainset,
+        id_targets = id_targets,
         size       = cfg.AL.n_start,
         ood_ratio  = cfg.AL.ood_ratio,
-        seed       = cfg.DEFAULT.seed
+        seed       = cfg.DEFAULT.seed,
+        method     = cfg.AL.init.method,
+        init_ood   = cfg.AL.init.get('init_ood', True),
     )
-    
-    # load model
-    model = create_model(
-        modelname   = cfg.MODEL.name,
-        num_classes = cfg.DATASET.num_classes, 
-        pretrained  = cfg.MODEL.pretrained, 
-        img_size    = cfg.DATASET.img_size,
-        **cfg.MODEL.get('params',{})
+
+    # load visual encoder
+    if cfg.TRAIN.get('params', False).get('return_features', False):
+        only_classifier = True
+        trainset.get_features(savedir=cfg.TRAIN.params.savedir_features, modelname=cfg.MODEL.name, is_train=True)
+        testset.get_features(savedir=cfg.TRAIN.params.savedir_features, modelname=cfg.MODEL.name, is_train=False)
+        trainset.return_features = True
+        testset.return_features = True
+    else:
+        only_classifier = False
+        
+    model = ImageEncoder(
+        modelname       = cfg.MODEL.name,
+        num_classes     = cfg.DATASET.num_classes,
+        img_size        = cfg.DATASET.img_size,
+        only_classifier = only_classifier
     )
+    data_config = timm.data.resolve_model_data_config(model.encoder)
+    data_config['input_size'] = (3, cfg.DATASET.img_size, cfg.DATASET.img_size)
+    trainset.transform = timm.data.create_transform(**data_config, is_training=True)
+    testset.transform = timm.data.create_transform(**data_config, is_training=False)
 
     # select strategy    
     openset_params = {
         'is_openset'      : True,
         'is_unlabeled'    : is_unlabeled,
         'is_ood'          : is_ood,
-        'id_classes'      : trainset.classes,
+        'id_classes'      : trainset.classes[id_targets],
         'savedir'         : savedir,
         'seed'            : cfg.DEFAULT.seed,
         'accelerator'     : accelerator
@@ -123,16 +226,17 @@ def openset_al_run(cfg: dict, trainset, testset, savedir: str):
         is_labeled       = is_labeled, 
         n_query          = cfg.AL.n_query, 
         n_subset         = cfg.AL.n_subset,
-        batch_size       = cfg.DATASET.batch_size, 
+        batch_size       = cfg.DATASET.test_batch_size, 
         num_workers      = cfg.DATASET.num_workers,
         steps_per_epoch  = cfg.TRAIN.params.get('steps_per_epoch', 0),
+        use_diverse      = cfg.AL.get('use_diverse', False),
         **openset_params
     )
     
     # define test dataloader
-    testloader = DataLoader(
+    testloader = create_id_testloader(
         dataset     = testset,
-        shuffle     = False,
+        id_targets  = id_targets,
         batch_size  = cfg.DATASET.test_batch_size,
         num_workers = cfg.DATASET.num_workers    
     )
@@ -227,7 +331,7 @@ def openset_al_run(cfg: dict, trainset, testset, savedir: str):
         
         # get trainloader
         trainloader = strategy.get_trainloader()
-        trainloader, validloader, testloader = accelerator.prepare(trainloader, validloader, testloader)
+        trainloader, testloader = accelerator.prepare(trainloader, testloader)
         
         # optimizer
         optimizer = create_optimizer(
@@ -256,6 +360,8 @@ def openset_al_run(cfg: dict, trainset, testset, savedir: str):
         if cfg.TRAIN.wandb.use:
             wandb.init(name=f'{cfg.DEFAULT.exp_name}_round{r}', project=cfg.TRAIN.wandb.project_name, entity=cfg.TRAIN.wandb.entity, config=OmegaConf.to_container(cfg))
 
+
+        # strategy.criterion = BalancedSoftmax(num_per_cls=np.unique(trainset.targets[strategy.is_labeled], return_counts=True)[1])
         # fitting model
         fit(
             model        = model, 
@@ -281,7 +387,8 @@ def openset_al_run(cfg: dict, trainset, testset, savedir: str):
             dataloader       = testloader, 
             criterion        = strategy.loss_fn, 
             log_interval     = cfg.TRAIN.log_interval,
-            return_per_class = True
+            return_per_class = True,
+            **cfg.TRAIN.get('params', {})
         )
 
         # save results per class

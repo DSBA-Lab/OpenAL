@@ -13,7 +13,7 @@ def create_query_strategy(
         num_workers: int, 
         steps_per_epoch: int = 0,
         n_subset: int = 0, 
-        interval_type: str = 'top', 
+        use_diverse: bool = False,
         **params
     ):
     
@@ -28,7 +28,7 @@ def create_query_strategy(
         batch_size       = batch_size,
         num_workers      = num_workers,
         steps_per_epoch  = steps_per_epoch,
-        interval_type    = interval_type,
+        use_diverse      = use_diverse,
         **params
     )
     

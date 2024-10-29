@@ -1,6 +1,10 @@
 import numpy as np
 from copy import deepcopy
 from sklearn.model_selection import train_test_split
+from tqdm.auto import tqdm
+
+import torch
+from torch.utils.data import DataLoader
 
 def get_target_from_dataset(dataset):
     # if class name is ALDataset
@@ -65,3 +69,18 @@ def split_data(trainset, seed: int):
     validset = insert_selected_samples(dataset=validset, selected_idx=valid_idx)
     
     return trainset, validset
+
+
+@torch.no_grad()
+def get_features(dataset, model, batch_size, num_workers, device):
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
+    model.eval()
+    model.to(device)
+    features = []
+    for inputs, _ in tqdm(dataloader, total=len(dataloader), desc='Get features'):
+        f = model(inputs.to(device))
+        features.append(f.cpu())
+        
+    features = torch.cat(features, dim=0)
+    
+    return features

@@ -22,14 +22,24 @@ def create_id_testloader(dataset, id_targets: np.ndarray, batch_size: int, num_w
 
     return dataloader
 
-def create_id_ood_targets(dataset, nb_id_class: int, seed: int):
+def create_id_ood_targets(dataset, nb_id_class: int, seed: int, id_targets: list = [], use_majority: bool = False):
     
     torch_seed(seed)
-    id_targets = np.random.choice(a=range(len(dataset.classes)), size=nb_id_class, replace=False)
+    targets = get_target_from_dataset(dataset=dataset)
+    
+    if len(id_targets) == 0:
+        if use_majority:
+            sorted_target_cnt = np.argsort(np.unique(targets, return_counts=True)[1])[::-1]
+            if dataset.__class__.__name__ == 'DomainNet':
+                sorted_target_cnt = sorted_target_cnt[1:]
+            id_targets = sorted_target_cnt[:nb_id_class]
+        else:
+            id_targets = np.random.choice(a=range(len(dataset.classes)), size=nb_id_class, replace=False)
+    else:
+        id_targets = np.asarray(id_targets)
     target_map = dict(zip(id_targets, np.arange(len(id_targets))))
     
     new_targets = []
-    targets = get_target_from_dataset(dataset=dataset)
     for t in targets:
         if t in target_map:
             new_targets.append(target_map[t])
@@ -45,7 +55,15 @@ def create_id_ood_targets(dataset, nb_id_class: int, seed: int):
     return dataset, id_targets
 
 
-def create_is_labeled_unlabeled(trainset, id_targets: np.ndarray, size: int, ood_ratio: float, seed: int):
+def create_is_labeled_unlabeled(
+    trainset: Dataset,
+    id_targets: np.ndarray,
+    size: int,
+    ood_ratio: float,
+    seed: int,
+    init_ood: bool = True,
+    method = 'stratified_random_select',
+):
     '''
     Args:
     - trainset (torch.utils.data.Dataset): trainset
@@ -64,14 +82,46 @@ def create_is_labeled_unlabeled(trainset, id_targets: np.ndarray, size: int, ood
     id_total_idx = [i for i in range(len(trainset.targets)) if trainset.targets[i] < len(id_targets)]
     ood_total_idx = [i for i in range(len(trainset.targets)) if trainset.targets[i] >= len(id_targets)]
 
-    n_ood = round(len(id_total_idx) * (ood_ratio / (1 - ood_ratio)))
-    ood_total_idx = random.sample(ood_total_idx, n_ood)
+    if ood_ratio < 1.0:
+        n_ood = round(len(id_total_idx) * (ood_ratio / (1 - ood_ratio)))
+        ood_total_idx = random.sample(ood_total_idx, n_ood)
     print("# Total ID: {}, OOD: {}".format(len(id_total_idx), len(ood_total_idx)))
 
-    test_size = int(size * (1 - ood_ratio))
+    if init_ood:
+        test_size = int(size * (1 - ood_ratio))
+    else:
+        test_size = size
+        
     if len(id_total_idx) > test_size:
-        _, lb_idx = train_test_split(id_total_idx, test_size=test_size, stratify=trainset.targets[id_total_idx], random_state=seed)
-        ood_start_idx = random.sample(ood_total_idx, int(size * ood_ratio))
+        
+        if method == "stratified_random_select":
+            _, lb_idx = train_test_split(id_total_idx, test_size=test_size, stratify=trainset.targets[id_total_idx], random_state=seed)
+        elif method == 'random_select':
+             _, lb_idx = train_test_split(id_total_idx, test_size=test_size, random_state=seed)
+        elif method == 'uniform_random_select':
+            c_size = int(test_size / len(trainset.classes))
+            c_size_list = np.full(len(id_targets), c_size)
+            
+            id_class_idx = np.arange(len(id_targets))
+            np.random.shuffle(id_class_idx)
+            
+            nb_remain = test_size - np.sum(c_size_list)
+            while nb_remain != 0:
+                for c in id_class_idx:
+                    c_size_list[c] += 1
+                    nb_remain -= 1
+                    if nb_remain == 0:
+                        break
+            
+            lb_idx = []
+            for c in id_class_idx:
+                id_c_idx = np.random.choice(np.where(trainset.targets == c)[0], size=c_size_list[c], replace=False)
+                lb_idx.extend(id_c_idx)        
+                     
+        if init_ood:
+            ood_start_idx = random.sample(ood_total_idx, int(size * ood_ratio))
+        else:
+            ood_start_idx = []
         ulb_idx = list(set(id_total_idx + ood_total_idx) - set(lb_idx) - set(ood_start_idx))
     else:
         lb_idx = id_total_idx

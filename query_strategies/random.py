@@ -12,7 +12,6 @@ class RandomSampling(Strategy):
         unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
         np.random.shuffle(unlabeled_idx)
-        q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
-        select_idx = unlabeled_idx[q_idx]
+        select_idx = unlabeled_idx[:self.n_query]
         
         return select_idx

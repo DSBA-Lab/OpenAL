@@ -26,6 +26,7 @@ class CLIPNAL(Strategy):
             savedir: str, 
             selected_strategy: str, 
             use_sim: bool = False,
+            logit_scale: float = 10.0,
             **init_args
         ):
         
@@ -37,6 +38,8 @@ class CLIPNAL(Strategy):
             del init_args[k]
             
         self.query_strategy = create_query_strategy(strategy_name=selected_strategy, **init_args)
+        if hasattr(self, 'num_id_class'):
+            self.query_strategy.num_id_class = self.num_id_class
         
         self.savedir = savedir
         
@@ -45,7 +48,8 @@ class CLIPNAL(Strategy):
             model_type  = model_type, 
             pre_train   = ckp_path, 
             prompt_path = prompt_path, 
-            classes     = self.id_classes
+            classes     = self.id_classes,
+            device      = self.accelerator.device if getattr(self, 'accelerator') else None
         )
         self.vis_clf = vis_clf
         self.clipn_train_transform = process_train
@@ -53,6 +57,9 @@ class CLIPNAL(Strategy):
         
         # similarity
         self.use_sim = use_sim
+    
+        # logit scale
+        self.logit_scale = logit_scale
     
     def init_model(self):
         return self.query_strategy.init_model()
@@ -77,7 +84,6 @@ class CLIPNAL(Strategy):
     
     
     def get_unlabeled_idx(self, vis_clf):
-        
         # get unlabeled index
         unlabeled_idx = self.predict_id_idx(vis_clf=vis_clf)
         self.check_ood_acc(id_pred_idx=unlabeled_idx, ulb_sample_idx=np.where(self.is_unlabeled==True)[0], savedir=self.savedir)
@@ -92,6 +98,9 @@ class CLIPNAL(Strategy):
     def get_clipn_dataloader(self, sample_idx: np.ndarray):
         dataset = deepcopy(self.dataset)
         dataset.transform = self.clipn_test_transform
+        
+        if hasattr(dataset, 'features'):
+            dataset.return_features = False
         
         sampler = SubsetSequentialSampler(indices=sample_idx)
     
@@ -114,13 +123,16 @@ class CLIPNAL(Strategy):
         vis_encoder = vis_clf.image_encoder
             
         # find best logit scale
-        logit_scale = self.get_logit_scale(
-            vis_clf        = vis_clf,
-            vis_encoder    = vis_encoder,
-            ulb_sample_idx = np.r_[np.where(self.is_labeled==True)[0], np.where(self.is_ood==True)[0]],
-            lb_sample_idx  = np.where(self.is_labeled==True)[0],
-            device         = device
-        )
+        if self.is_ood.sum() > 0:
+            logit_scale = self.get_logit_scale(
+                vis_clf        = vis_clf,
+                vis_encoder    = vis_encoder,
+                ulb_sample_idx = np.r_[np.where(self.is_labeled==True)[0], np.where(self.is_ood==True)[0]],
+                lb_sample_idx  = np.where(self.is_labeled==True)[0],
+                device         = device
+            )
+        else:
+            logit_scale = self.logit_scale
         
         # get ouputs
         outputs = self.get_logits_and_embeds(

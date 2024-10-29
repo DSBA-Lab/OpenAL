@@ -3,24 +3,27 @@ from .warmup import GradualWarmupScheduler
 
 def create_scheduler(sched_name: str, optimizer, epochs: int, params: dict, warmup_params: dict = {}):
     
-    if isinstance(optimizer, dict):
-        scheduler = {}
-        for k, opt in optimizer.items():
-            scheduler[k] = _create_scheduler(
+    if sched_name != None:
+        if isinstance(optimizer, dict):
+            scheduler = {}
+            for k, opt in optimizer.items():
+                scheduler[k] = _create_scheduler(
+                    sched_name    = sched_name,
+                    optimizer     = opt,
+                    epochs        = epochs,
+                    params        = params,
+                    warmup_params = warmup_params
+                )
+        else:
+            scheduler = _create_scheduler(
                 sched_name    = sched_name,
-                optimizer     = opt,
+                optimizer     = optimizer,
                 epochs        = epochs,
                 params        = params,
                 warmup_params = warmup_params
             )
     else:
-        scheduler = _create_scheduler(
-            sched_name    = sched_name,
-            optimizer     = optimizer,
-            epochs        = epochs,
-            params        = params,
-            warmup_params = warmup_params
-        )
+        scheduler = {}
         
     return scheduler
 

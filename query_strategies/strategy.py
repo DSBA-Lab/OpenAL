@@ -4,6 +4,9 @@ import torch
 from tqdm.auto import tqdm
 from collections import defaultdict
 from copy import deepcopy
+from sklearn.cluster import KMeans
+
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 
 from .sampler import SubsetSequentialSampler, SubsetWeightedRandomSampler
@@ -26,12 +29,13 @@ class Strategy:
             is_unlabeled: np.ndarray = None, 
             is_ood: np.ndarray = None,
             id_classes: np.ndarray = None,
-            interval_type: str = 'top', 
+            use_diverse: bool = False,
             **kwargs
         ):
         
         # model
         self.model = model
+        self.accelerator = kwargs.get('accelerator', None)
         
         # for AL
         self.n_query = n_query
@@ -63,7 +67,7 @@ class Strategy:
         self.steps_per_epoch = steps_per_epoch
         
         # interval type
-        self.interval_type = interval_type
+        self.use_diverse = use_diverse
 
         # loss function
         self.criterion = torch.nn.CrossEntropyLoss()
@@ -80,13 +84,76 @@ class Strategy:
         # unlabeled index
         unlabeled_idx = kwargs.get('unlabeled_idx', self.get_unlabeled_idx())
         
-        # get score rank
-        _, score_rank = self.get_scores(model=model, sample_idx=unlabeled_idx)
+        if len(unlabeled_idx) <= self.n_query:
+            select_idx = unlabeled_idx
+        else:
+            if self.use_diverse:
+                select_idx = self.diverse_query(model=model, unlabeled_idx=unlabeled_idx)
+            else:
+                # get score rank
+                _, score_rank = self.get_scores(model=model, sample_idx=unlabeled_idx)
+                select_idx = unlabeled_idx[score_rank[:self.n_query]]
+            
+        return select_idx
+    
+    def diverse_query(self, model, unlabeled_idx: np.ndarray):
+        # get embeeding of unlabeled samples
+        ulb_embed = self.extract_outputs(
+            model        = model, 
+            sample_idx   = unlabeled_idx, 
+            return_probs = False,
+            return_embed = True
+        )['embed']
+        ulb_embed = F.normalize(ulb_embed, dim=-1)
+
+        # clustering
+        kmeans = KMeans(n_clusters=self.num_id_class, random_state=223)
+        cluster_cls = kmeans.fit_predict(ulb_embed.numpy())
         
-        q_idx = self.query_interval(unlabeled_idx=unlabeled_idx, model=model)
-        select_idx = unlabeled_idx[score_rank[q_idx]]
+        # number of queries for each clusters                 
+        n_query_cluster = self.select_samples_from_clusters(total_samples=self.n_query, total_clusters=self.num_id_class, cluster_cls=cluster_cls)
+        
+        # select index for each clusters
+        select_idx = []
+        for i in range(self.num_id_class):
+            cluster_idx = np.where(cluster_cls==i)[0]
+            cluster_unlabeled_idx = unlabeled_idx[cluster_idx]
+            # get score rank
+            _, score_rank = self.get_scores(model=model, sample_idx=cluster_unlabeled_idx)
+                
+            cluster_select_idx = cluster_unlabeled_idx[score_rank[:n_query_cluster[i]]]
+            select_idx.append(cluster_select_idx)
+            
+        select_idx = np.hstack(select_idx)
         
         return select_idx
+    
+    def select_samples_from_clusters(self, total_samples: int, total_clusters: int, cluster_cls: list):
+        n_samples_cluster = []
+        for i in range(self.num_id_class):
+            cluster_idx = np.where(cluster_cls==i)[0]
+            n_samples_cluster.append(len(cluster_idx))
+        
+        base_selection = total_samples // total_clusters
+        selected_samples = np.zeros(total_clusters, dtype=int)
+        
+        for i in range(total_clusters):
+            selected_samples[i] = min(base_selection, n_samples_cluster[i])
+        
+        # allocate remain samples to other clusters
+        remaining_to_distribute = total_samples - np.sum(selected_samples)
+        while remaining_to_distribute > 0:
+            eligible_clusters = [i for i in range(total_clusters) if selected_samples[i] < n_samples_cluster[i]]
+            
+            if len(eligible_clusters) > 0:
+                np.random.seed(223)
+                random_cluster = np.random.choice(eligible_clusters)
+                selected_samples[random_cluster] += 1
+                remaining_to_distribute -= 1
+            else:
+                break
+        
+        return selected_samples
     
     def update(self, query_idx: np.ndarray):
         if self.is_openset:
@@ -286,16 +353,7 @@ class Strategy:
             mc_probs.append(probs)
             
         return torch.stack(mc_probs)
-    
-    
-    def query_interval(self, unlabeled_idx, model):
-        N = len(unlabeled_idx)
 
-        if self.interval_type == 'top':
-            q_idx = list(range(0, self.n_query))
-        
-        return q_idx     
-    
     def pooling_embedding(self, x):
         '''
         dim : Target dimension for pooling 

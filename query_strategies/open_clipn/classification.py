@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import pickle
 from .factory import create_model_and_transforms
 
+from tqdm.auto import tqdm
+
 def torch_save(classifer, save_path="./"):
     if os.path.dirname(save_path) != '':
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -20,6 +22,7 @@ def torch_load(save_path, device=None):
     return classifier
 
 def merge_yes_no_feature(classes, model, prompt_path, device):
+    
     txt = []
     N = len(classes)
     model.eval()
@@ -38,7 +41,7 @@ def merge_yes_no_feature(classes, model, prompt_path, device):
     text_no_ttl = torch.zeros(len(classes), 512).to(device)
     
     with torch.no_grad():
-        for i in range(num_prom):
+        for i in tqdm(range(num_prom), desc='Get text weights'):
             text_yes_i = model.encode_text(text_inputs[i])
             text_yes_i = F.normalize(text_yes_i, dim=-1)
             text_no_i = model.encode_text(text_inputs[i], "no")
@@ -65,6 +68,7 @@ class ViT_Classifier(torch.nn.Module):
         for module_name in module.named_parameters():
             module_name[1].requires_grad = True
             
+    @torch.no_grad()
     def forward(self, x):
         inputs = self.image_encoder(x)
         inputs_norm = F.normalize(inputs, dim=-1)
@@ -83,8 +87,10 @@ class ViT_Classifier(torch.nn.Module):
         return torch_load(filename, device)
     
         
-def load_model(model_type='ViT-B-16', pre_train="./", prompt_path='./prompt_template/prompt128.txt', classes=None, device=None):
+def load_model(model_type='ViT-B-16', pre_train="./", prompt_path='./prompt_template/prompt128.txt', classes=None, device=None, return_classifier=True):
     model, process_train, process_test = create_model_and_transforms(model_type, pretrained=pre_train, device=device, freeze=False)
-    weight_yes, weight_no = merge_yes_no_feature(classes=classes, model=model, prompt_path=prompt_path, device=device)
-    vit_classifier =  ViT_Classifier(image_encoder=model.visual, classification_head_yes=weight_yes, classification_head_no=weight_no)
-    return vit_classifier, process_train, process_test
+    if return_classifier:
+        weight_yes, weight_no = merge_yes_no_feature(classes=classes, model=model, prompt_path=prompt_path, device=device)
+        model =  ViT_Classifier(image_encoder=model.visual, classification_head_yes=weight_yes, classification_head_no=weight_no)
+    
+    return model, process_train, process_test

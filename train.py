@@ -217,7 +217,7 @@ def get_metrics(metrics: dict, metrics_log: str, targets: list, scores: list, pr
 
 
 
-def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, **train_params) -> dict:   
+def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log_interval: int, **params) -> dict:   
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     acc_m = AverageMeter()
@@ -236,7 +236,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     else:
         optimizer.zero_grad()
     
-    steps_per_epoch = train_params.get('steps_per_epoch') if train_params.get('steps_per_epoch') else len(dataloader)
+    steps_per_epoch = params.get('steps_per_epoch') if params.get('steps_per_epoch') else len(dataloader)
     
     step = 0
     for idx, (inputs, targets) in enumerate(dataloader):
@@ -249,7 +249,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
                 outputs['logits'] = model.backbone(inputs)
 
                 # detach LPM for learning loss
-                if train_params.get('is_detach_lpm', False):
+                if params.get('is_detach_lpm', False):
                     for k, v in model.layer_outputs.items():
                         model.layer_outputs[k] = v.detach()
                 
@@ -322,7 +322,7 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     metrics.update([('acc',acc_m.avg), ('loss',losses_m.avg)])
     metrics_log = '\nTRAIN: Loss: %.3f | Acc: %.3f%%' % (metrics['loss'], 100.*metrics['acc'])
     
-    if not train_params.get('metrics_off', False):
+    if not params.get('metrics_off', False):
         metrics, metrics_log = get_metrics(
             metrics     = metrics, 
             metrics_log = metrics_log, 
@@ -337,7 +337,10 @@ def train(model, dataloader, criterion, optimizer, accelerator: Accelerator, log
     return metrics
 
         
-def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False) -> dict:
+def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', return_per_class: bool = False, **params) -> dict:
+    if params.get('return_features', False):
+        dataloader.dataset.return_features = True
+        
     correct = 0
     total = 0
     total_loss = 0
@@ -347,6 +350,7 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
     total_targets = []
     
     model.eval()
+
     with torch.no_grad():
         for idx, (inputs, targets) in enumerate(dataloader):
             # predict
@@ -389,14 +393,16 @@ def test(model, dataloader, criterion, log_interval: int, name: str = 'TEST', re
     # logging metrics
     print(metrics_log)
     
+    if params.get('return_features', False):
+        dataloader.dataset.return_features = False
+    
     return metrics
             
                 
 def fit(
     model, trainloader, testloader, criterion, optimizer, scheduler, accelerator: Accelerator,
-    epochs: int, use_wandb: bool, log_interval: int, seed: int = 0, **train_params
+    epochs: int, use_wandb: bool, log_interval: int, seed: int = 0, **params
 ) -> None:
-
     step = 0
     
     torch_seed(seed)    
@@ -404,9 +410,9 @@ def fit(
         print(f'\nEpoch: {epoch+1}/{epochs}')
         
         # for learning loss
-        if 'detach_epoch_ratio' in train_params.keys():
-            is_detach_lpm = True if epoch > int(epochs * train_params['detach_epoch_ratio']) else False
-            train_params['is_detach_lpm'] = is_detach_lpm
+        if 'detach_epoch_ratio' in params.keys():
+            is_detach_lpm = True if epoch > int(epochs * params['detach_epoch_ratio']) else False
+            params['is_detach_lpm'] = is_detach_lpm
         
         train_metrics = train(
             model        = model, 
@@ -415,7 +421,7 @@ def fit(
             optimizer    = optimizer, 
             accelerator  = accelerator, 
             log_interval = log_interval,
-            **train_params
+            **params
         )
         
         if testloader != None:
@@ -703,7 +709,6 @@ def al_run(cfg: dict, trainset, validset, testset, savedir: str):
         batch_size       = cfg.DATASET.batch_size, 
         num_workers      = cfg.DATASET.num_workers,
         steps_per_epoch  = cfg.TRAIN.params.get('steps_per_epoch', 0),
-        interval_type    = cfg.AL.get('interval_type', 'top'),
         **cfg.AL.get('params', {})
     )
     
@@ -994,7 +999,8 @@ def openset_al_run(cfg: dict, trainset, validset, testset, savedir: str):
         id_targets = id_targets,
         size       = cfg.AL.n_start,
         ood_ratio  = cfg.AL.ood_ratio,
-        seed       = cfg.DEFAULT.seed
+        seed       = cfg.DEFAULT.seed,
+        method     = cfg.AL.init.method
     )
     
     # load model
