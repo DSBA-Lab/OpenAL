@@ -115,9 +115,13 @@ class EOAL(Strategy):
             features  = outputs['features'].cpu().numpy(),
             preds_det = outputs['pred_det']
         )
-        
-        # select query index from unlabeled index
-        select_idx = unlabeled_idx[selected_id_idx]
+        if len(selected_id_idx) == 0: # failed FINCH
+            pred_id_idx = np.where(outputs['pred_det'] < self.num_id_class)[0]
+            selected_id_idx = scores[outputs['pred_det'] < self.num_id_class].sort()[1][:self.n_query]
+            select_idx = pred_id_idx[selected_id_idx]
+        else:        
+            # select query index from unlabeled index
+            select_idx = unlabeled_idx[selected_id_idx]
         
         
         return select_idx
@@ -125,7 +129,14 @@ class EOAL(Strategy):
     def diversity(self, scores: torch.Tensor, features: np.ndarray, preds_det: np.ndarray):
         # clustering features as predicted ID
         features_id_pred = features[preds_det < self.num_id_class]
-        labels_c, num_clust, _ = FINCH(features_id_pred, req_clust=self.num_id_class, verbose=True)
+        
+        try:
+            labels_c, num_clust, _ = FINCH(features_id_pred, req_clust=self.num_id_class, distance="cosine", verbose=True)
+        except IndexError:
+            try:
+                labels_c, num_clust, _ = FINCH(features_id_pred, req_clust=self.num_id_class, distance="euclidean", verbose=True)
+            except IndexError:
+                return []
         
         # find optimal partition
         partition_idx = 0
